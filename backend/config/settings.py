@@ -1,7 +1,11 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-domaintwin-change-me")
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if host.strip()]
@@ -18,3 +22,10 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+NAMECOM_ENVIRONMENT = os.getenv("NAMECOM_ENVIRONMENT", "sandbox").strip().lower()
+NAMECOM_USERNAME = os.getenv("NAMECOM_USERNAME", "").strip()
+NAMECOM_API_TOKEN = os.getenv("NAMECOM_API_TOKEN", "").strip()
+NAMECOM_TIMEOUT_SECONDS = float(os.getenv("NAMECOM_TIMEOUT_SECONDS", "10"))
+NAMECOM_ALLOW_MUTATIONS = os.getenv("NAMECOM_ALLOW_MUTATIONS", "0") == "1"
+NAMECOM_ALLOW_PRODUCTION_MUTATIONS = os.getenv("NAMECOM_ALLOW_PRODUCTION_MUTATIONS", "0") == "1"
