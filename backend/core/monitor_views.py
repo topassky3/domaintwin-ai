@@ -104,7 +104,7 @@ def domain_health(request, domain_name: str):
         return _json({})
     try:
         health = check_domain_health(domain_name)
-        observation = record_health_observation(domain_name, health)
+        observation = record_health_observation(health["domainName"], health)
         return _json({"health": _serialize_health(observation)})
     except Exception as exc:
         return _error_response(exc)
@@ -127,7 +127,7 @@ def evaluate_domain(request, domain_name: str):
         )
 
         health = check_domain_health(domain_name)
-        observation = record_health_observation(domain_name, health)
+        observation = record_health_observation(health["domainName"], health)
         unknown_destination = unknown_destination_detected(baseline.records, diff)
         risk = evaluate_risk(
             diff,
@@ -207,5 +207,8 @@ def domain_incidents(request, domain_name: str):
 def incident_detail(request, incident_id: int):
     if request.method == "OPTIONS":
         return _json({})
-    incident = get_object_or_404(Incident, id=incident_id)
-    return _json({"incident": _serialize_incident(incident, include_timeline=True)})
+    try:
+        incident = get_object_or_404(Incident, id=incident_id)
+        return _json({"incident": _serialize_incident(incident, include_timeline=True)})
+    except Exception as exc:
+        return _error_response(exc)
