@@ -20,7 +20,7 @@ export default function Home() {
           </nav>
           <div className="nav-actions">
             <Link className="button button--ghost" href="/login">Sign in</Link>
-            <a className="button button--primary" href="#demo">Launch Demo</a>
+            <Link className="button button--primary" href="/demo">Launch Demo</Link>
           </div>
         </div>
       </header>
@@ -31,13 +31,13 @@ export default function Home() {
           <h1>DNS incidents don&apos;t need to become outages.</h1>
           <p className="hero-lead">Detect dangerous DNS changes, understand what broke, and restore a verified configuration in one click.</p>
           <div className="hero-actions">
-            <a className="button button--primary button--large" href="#demo">Launch Demo</a>
+            <Link className="button button--primary button--large" href="/demo">Launch Demo</Link>
             <a className="button button--secondary button--large" href={githubUrl} target="_blank" rel="noreferrer">View on GitHub</a>
           </div>
           <div className="integration-note"><span className="integration-icon">API</span>Powered by the <strong>name.com Domain API</strong></div>
         </div>
 
-        <div className="incident-console" id="demo" aria-label="Domain incident recovery example">
+        <div className="incident-console" aria-label="Domain incident recovery example">
           <div className="console-header"><div><span className="console-label">LIVE INCIDENT STORY</span><strong>acme.com</strong></div><span className="environment-pill">PRODUCTION</span></div>
           <div className="state-row state-row--healthy"><div><span className="state-kicker">BEFORE</span><strong>HEALTHY</strong></div><div className="state-metrics"><span>Risk <b>5/100</b></span><span>HTTP <b>200 OK</b></span></div></div>
           <div className="event-line"><span className="event-node">1</span><div><strong>DNS A record changed</strong><code>203.0.113.10 → 198.51.100.77</code></div></div>
@@ -56,7 +56,7 @@ export default function Home() {
 
       <section className="section shell"><div className="integration-panel"><div><span className="eyebrow">CORE INTEGRATION</span><h2>Domain operations are part of the recovery workflow.</h2><p>DomainTwin uses name.com as infrastructure, not decoration: domain state and DNS operations are central to the product.</p></div><div className="api-flow"><div className="api-flow-row"><span>Read domains</span><i>→</i><span>Read DNS</span><i>→</i><span>Detect drift</span><i>→</i><span>Restore records</span></div><div className="api-flow-row api-flow-row--muted"><span>Search domain</span><i>→</i><span>Availability</span><i>→</i><span>Register</span><i>→</i><span>Clone DNS</span></div></div></div></section>
 
-      <section className="section shell"><div className="final-cta"><span className="eyebrow eyebrow--light">HACKATHON DEMO</span><h2>Break it. Detect it. Recover it.</h2><p>See DomainTwin take a domain from a dangerous DNS change to a verified recovery.</p><div className="hero-actions hero-actions--centered"><a className="button button--light button--large" href="#demo">Launch Live Demo</a><a className="button button--outline-light button--large" href={githubUrl} target="_blank" rel="noreferrer">View Source</a></div></div></section>
+      <section className="section shell"><div className="final-cta"><span className="eyebrow eyebrow--light">HACKATHON DEMO</span><h2>Break it. Detect it. Recover it.</h2><p>See DomainTwin take a domain from a dangerous DNS change to a verified recovery.</p><div className="hero-actions hero-actions--centered"><Link className="button button--light button--large" href="/demo">Launch Live Demo</Link><a className="button button--outline-light button--large" href={githubUrl} target="_blank" rel="noreferrer">View Source</a></div></div></section>
 
       <footer className="footer"><div className="shell footer-grid"><div><Link className="brand brand--dark" href="/"><span className="brand-mark">D</span><span>DomainTwin AI</span></Link><p>DNS continuity for teams that cannot afford to guess.</p><ApiStatus /></div><div className="footer-links"><a href={githubUrl} target="_blank" rel="noreferrer">GitHub</a><a href="https://api-cloud-ai-hackathon-2026.devpost.com/" target="_blank" rel="noreferrer">DevNetwork Hackathon</a><a href="#security">Security</a><Link href="/login">Sign in</Link></div></div><div className="shell footer-bottom">Built for DevNetwork [API + Cloud + AI] Hackathon 2026.</div></footer>
     </main>
