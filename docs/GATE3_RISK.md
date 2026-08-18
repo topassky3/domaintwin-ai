@@ -121,7 +121,7 @@ Same evidence must always produce the same score, severity and ordered factor li
 
 ## 5. Exercise the Gate 4 integration seam
 
-Gate 3 already accepts two explicit contextual signals that Gate 4 will later calculate automatically. These query values are a test seam only; they are not yet live health sensors.
+Gate 3 already accepts two explicit contextual signals that Gate 4 will later calculate automatically. These query values are a test seam only; they are not yet live health sensors and must not be presented as measured health evidence in the hackathon demo until Gate 4 replaces them with real checks.
 
 ```powershell
 $contextRisk = Invoke-RestMethod `
@@ -194,5 +194,5 @@ Gate 3 passes when:
 - repeated evaluation of identical evidence is identical;
 - unit tests cover representative HIGH and CRITICAL cases;
 - the real sandbox TXT removal produces a transparent LOW score of 5;
-- contextual health/destination signals compose deterministically without AI;
+- contextual health/destination inputs compose deterministically and remain clearly labeled as a temporary integration seam until Gate 4 supplies measured evidence;
 - tests/checks pass and the working tree is clean.
