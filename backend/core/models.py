@@ -139,12 +139,6 @@ class RecoveryPlan(models.Model):
 
     class Meta:
         ordering = ["-created_at", "-id"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["domain_name", "plan_fingerprint"],
-                name="unique_recovery_plan_fingerprint_per_domain",
-            )
-        ]
 
 
 class RecoveryAuditEvent(models.Model):
