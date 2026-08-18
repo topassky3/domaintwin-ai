@@ -99,3 +99,70 @@ class IncidentEvent(models.Model):
                 name="unique_incident_event_sequence",
             )
         ]
+
+
+class RecoveryPlan(models.Model):
+    class Status(models.TextChoices):
+        PREVIEW = "PREVIEW", "Preview"
+        APPROVED = "APPROVED", "Approved"
+        APPLYING = "APPLYING", "Applying"
+        RECOVERED = "RECOVERED", "Recovered"
+        PARTIAL = "PARTIAL", "Partial recovery"
+        FAILED = "FAILED", "Failed"
+        STALE = "STALE", "Stale"
+
+    domain_name = models.CharField(max_length=253, db_index=True)
+    baseline_snapshot = models.ForeignKey(
+        DomainSnapshot,
+        on_delete=models.PROTECT,
+        related_name="recovery_plans",
+    )
+    incident = models.ForeignKey(
+        Incident,
+        on_delete=models.PROTECT,
+        related_name="recovery_plans",
+        null=True,
+        blank=True,
+    )
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PREVIEW)
+    live_fingerprint_before = models.CharField(max_length=64)
+    target_fingerprint = models.CharField(max_length=64)
+    plan_fingerprint = models.CharField(max_length=64, db_index=True)
+    operations = models.JSONField(default=list)
+    operation_results = models.JSONField(default=list)
+    verification = models.JSONField(default=dict)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["domain_name", "plan_fingerprint"],
+                name="unique_recovery_plan_fingerprint_per_domain",
+            )
+        ]
+
+
+class RecoveryAuditEvent(models.Model):
+    plan = models.ForeignKey(
+        RecoveryPlan,
+        on_delete=models.CASCADE,
+        related_name="audit_events",
+    )
+    sequence = models.PositiveIntegerField()
+    event_type = models.CharField(max_length=64)
+    payload = models.JSONField(default=dict)
+    occurred_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["sequence", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["plan", "sequence"],
+                name="unique_recovery_audit_sequence",
+            )
+        ]
