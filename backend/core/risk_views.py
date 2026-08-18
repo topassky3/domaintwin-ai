@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_http_methods
 
@@ -22,6 +22,11 @@ def _json(data: dict, status: int = 200) -> JsonResponse:
 
 
 def _error_response(exc: Exception) -> JsonResponse:
+    if isinstance(exc, Http404):
+        return _json(
+            {"error": {"message": "Known-good snapshot not found.", "status": 404}},
+            status=404,
+        )
     if isinstance(exc, NameComAPIError):
         return _json(
             {
@@ -62,11 +67,6 @@ def domain_risk(request, domain_name: str):
         return _json({})
 
     try:
-        marker = get_object_or_404(KnownGoodSnapshot, domain_name=domain_name)
-        baseline = marker.snapshot
-        live = normalize_records(_live_records(domain_name))
-        diff = diff_records(baseline.records, live)
-
         http_health_failed = _parse_bool(
             request.GET.get("http_health_failed"),
             field="http_health_failed",
@@ -75,6 +75,11 @@ def domain_risk(request, domain_name: str):
             request.GET.get("unknown_destination"),
             field="unknown_destination",
         )
+
+        marker = get_object_or_404(KnownGoodSnapshot, domain_name=domain_name)
+        baseline = marker.snapshot
+        live = normalize_records(_live_records(domain_name))
+        diff = diff_records(baseline.records, live)
 
         risk = evaluate_risk(
             diff,
