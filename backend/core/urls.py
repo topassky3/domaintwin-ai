@@ -1,5 +1,12 @@
 from django.urls import path
 
+from .monitor_views import (
+    domain_health,
+    domain_incidents,
+    domain_monitor_status,
+    evaluate_domain,
+    incident_detail,
+)
 from .risk_views import domain_risk
 from .twin_views import live_diff, snapshot_detail, snapshot_known_good, snapshots
 from .views import (
@@ -46,5 +53,30 @@ urlpatterns = [
         "risk/domains/<str:domain_name>/",
         domain_risk,
         name="domain-risk",
+    ),
+    path(
+        "monitor/domains/<str:domain_name>/health/",
+        domain_health,
+        name="domain-health",
+    ),
+    path(
+        "monitor/domains/<str:domain_name>/evaluate/",
+        evaluate_domain,
+        name="domain-monitor-evaluate",
+    ),
+    path(
+        "monitor/domains/<str:domain_name>/status/",
+        domain_monitor_status,
+        name="domain-monitor-status",
+    ),
+    path(
+        "incidents/domains/<str:domain_name>/",
+        domain_incidents,
+        name="domain-incidents",
+    ),
+    path(
+        "incidents/<int:incident_id>/",
+        incident_detail,
+        name="incident-detail",
     ),
 ]
