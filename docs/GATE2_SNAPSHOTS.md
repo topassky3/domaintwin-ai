@@ -73,6 +73,10 @@ Invoke-RestMethod "http://127.0.0.1:8000/api/twin/domains/$domain/diff/" | Conve
 
 Expected: `driftDetected=false` and all ADDED/REMOVED/MODIFIED counts equal zero.
 
+### Verified checkpoint — 2026-08-18
+
+The real name.com sandbox domain was captured successfully as snapshot `v1` with `recordCount=0` and fingerprint `4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`. Snapshot `1` was explicitly marked `KNOWN_GOOD`. A subsequent live comparison produced the identical fingerprint, `driftDetected=false`, and zero ADDED/REMOVED/MODIFIED changes.
+
 ## 4. Prove ADDED
 
 Temporarily set `NAMECOM_ALLOW_MUTATIONS=1` in `backend/.env` and restart Django.
