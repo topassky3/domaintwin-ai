@@ -240,6 +240,12 @@ def create_recovery_plan(
     existing = RecoveryPlan.objects.filter(
         domain_name=domain_name,
         plan_fingerprint=fingerprint,
+        status__in=[
+            RecoveryPlan.Status.PREVIEW,
+            RecoveryPlan.Status.APPROVED,
+            RecoveryPlan.Status.APPLYING,
+            RecoveryPlan.Status.RECOVERED,
+        ],
     ).first()
     if existing:
         return existing, False
@@ -354,16 +360,8 @@ def _mark_verified_recovered(
             "updated_at",
         ]
     )
-    append_recovery_audit(
-        plan,
-        "VERIFICATION_SUCCEEDED",
-        verification,
-    )
-    append_recovery_audit(
-        plan,
-        "RECOVERY_COMPLETED",
-        {"status": plan.status},
-    )
+    append_recovery_audit(plan, "VERIFICATION_SUCCEEDED", verification)
+    append_recovery_audit(plan, "RECOVERY_COMPLETED", {"status": plan.status})
     _resolve_incident_after_recovery(plan)
     return plan
 
@@ -414,11 +412,7 @@ def apply_recovery_plan(
     plan.status = RecoveryPlan.Status.APPLYING
     plan.applied_at = timezone.now()
     plan.save(update_fields=["status", "applied_at", "updated_at"])
-    append_recovery_audit(
-        plan,
-        "APPLY_STARTED",
-        {"operationCount": len(plan.operations)},
-    )
+    append_recovery_audit(plan, "APPLY_STARTED", {"operationCount": len(plan.operations)})
     _append_incident_event(
         plan.incident,
         "RECOVERY_APPLY_STARTED",
