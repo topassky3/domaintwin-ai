@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .risk_views import domain_risk
 from .twin_views import live_diff, snapshot_detail, snapshot_known_good, snapshots
 from .views import (
     health,
@@ -40,5 +41,10 @@ urlpatterns = [
         "twin/domains/<str:domain_name>/diff/",
         live_diff,
         name="twin-live-diff",
+    ),
+    path(
+        "risk/domains/<str:domain_name>/",
+        domain_risk,
+        name="domain-risk",
     ),
 ]
