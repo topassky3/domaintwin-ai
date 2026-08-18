@@ -7,6 +7,12 @@ from .monitor_views import (
     evaluate_domain,
     incident_detail,
 )
+from .recovery_views import (
+    domain_recovery_plans,
+    recovery_plan_apply,
+    recovery_plan_approve,
+    recovery_plan_detail,
+)
 from .risk_views import domain_risk
 from .twin_views import live_diff, snapshot_detail, snapshot_known_good, snapshots
 from .views import (
@@ -78,5 +84,25 @@ urlpatterns = [
         "incidents/<int:incident_id>/",
         incident_detail,
         name="incident-detail",
+    ),
+    path(
+        "recovery/domains/<str:domain_name>/plans/",
+        domain_recovery_plans,
+        name="domain-recovery-plans",
+    ),
+    path(
+        "recovery/plans/<int:plan_id>/",
+        recovery_plan_detail,
+        name="recovery-plan-detail",
+    ),
+    path(
+        "recovery/plans/<int:plan_id>/approve/",
+        recovery_plan_approve,
+        name="recovery-plan-approve",
+    ),
+    path(
+        "recovery/plans/<int:plan_id>/apply/",
+        recovery_plan_apply,
+        name="recovery-plan-apply",
     ),
 ]
