@@ -21,6 +21,11 @@ class UnsafeHealthTarget(ValueError):
     pass
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 @dataclass(frozen=True)
 class ResolutionResult:
     ok: bool
@@ -66,31 +71,43 @@ def resolve_public_host(domain_name: str) -> ResolutionResult:
 
 def _probe_url(url: str, timeout: float) -> dict[str, Any]:
     headers = {"User-Agent": "DomainTwin-Health/1.0"}
+    opener = urllib.request.build_opener(_NoRedirect())
 
     def execute(method: str) -> dict[str, Any]:
         request = urllib.request.Request(url, headers=headers, method=method)
         started = time.perf_counter()
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with opener.open(request, timeout=timeout) as response:
                 status = int(response.getcode() or 0)
-                final_url = response.geturl()
                 latency_ms = round((time.perf_counter() - started) * 1000, 2)
                 return {
                     "ok": 200 <= status < 400,
                     "statusCode": status,
                     "latencyMs": latency_ms,
-                    "finalUrl": final_url,
+                    "finalUrl": url,
+                    "redirectLocation": None,
                     "error": None if 200 <= status < 400 else f"Unexpected HTTP status {status}.",
                 }
         except urllib.error.HTTPError as exc:
             latency_ms = round((time.perf_counter() - started) * 1000, 2)
             if method == "HEAD" and exc.code in {405, 501}:
                 return {"retryWithGet": True}
+            redirect_location = exc.headers.get("Location") if exc.headers else None
+            if 300 <= int(exc.code) < 400:
+                return {
+                    "ok": True,
+                    "statusCode": int(exc.code),
+                    "latencyMs": latency_ms,
+                    "finalUrl": url,
+                    "redirectLocation": redirect_location,
+                    "error": None,
+                }
             return {
                 "ok": False,
                 "statusCode": int(exc.code),
                 "latencyMs": latency_ms,
-                "finalUrl": exc.geturl() or url,
+                "finalUrl": url,
+                "redirectLocation": None,
                 "error": f"HTTP status {exc.code}.",
             }
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
@@ -101,6 +118,7 @@ def _probe_url(url: str, timeout: float) -> dict[str, Any]:
                 "statusCode": None,
                 "latencyMs": latency_ms,
                 "finalUrl": url,
+                "redirectLocation": None,
                 "error": str(reason),
             }
 
@@ -121,6 +139,7 @@ def check_domain_health(domain_name: str) -> dict[str, Any]:
             "statusCode": None,
             "latencyMs": 0.0,
             "finalUrl": None,
+            "redirectLocation": None,
             "error": resolution.error,
         }
         http_probe = {**failed_probe, "url": f"http://{host}/"}
