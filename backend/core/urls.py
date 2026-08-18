@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .twin_views import live_diff, snapshot_detail, snapshot_known_good, snapshots
 from .views import (
     health,
     namecom_domain,
@@ -19,5 +20,25 @@ urlpatterns = [
         "namecom/domains/<str:domain_name>/records/<int:record_id>/",
         namecom_record_detail,
         name="namecom-record-detail",
+    ),
+    path(
+        "twin/domains/<str:domain_name>/snapshots/",
+        snapshots,
+        name="twin-snapshots",
+    ),
+    path(
+        "twin/domains/<str:domain_name>/snapshots/<int:snapshot_id>/",
+        snapshot_detail,
+        name="twin-snapshot-detail",
+    ),
+    path(
+        "twin/domains/<str:domain_name>/snapshots/<int:snapshot_id>/known-good/",
+        snapshot_known_good,
+        name="twin-snapshot-known-good",
+    ),
+    path(
+        "twin/domains/<str:domain_name>/diff/",
+        live_diff,
+        name="twin-live-diff",
     ),
 ]
