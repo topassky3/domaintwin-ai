@@ -42,6 +42,7 @@ if (!failures.length) {
   const checks = [
     [shell.includes("namecom/status/"), "shell must read name.com provider status"],
     [shell.includes("product-env--production") && shell.includes("product-env--sandbox"), "permanent environment indicator missing"],
+    [shell.includes("domainsReachable") && shell.includes("fallbackEnvironment") && shell.includes("API connected · status fallback"), "provider shell must not report false offline when domains endpoint is reachable"],
     [domainWorkspace.includes("Evaluate now"), "domain monitor action missing"],
     [views.includes("Generate explanation"), "AI explanation action missing"],
     [views.includes("Create rollback preview"), "recovery preview action missing"],
@@ -71,6 +72,7 @@ if (failures.length) {
 console.log("GATE 7 CONTRACT PASS");
 console.log(`Required routes: ${requiredRoutes.length}/8`);
 console.log("Environment indicator: present");
+console.log("Provider status fallback: domains reachability prevents false offline state");
 console.log("Risk semantics: active vs historical separated");
 console.log("Domain metadata privacy: contacts blocked at backend boundary");
 console.log("Core flow: status -> evidence -> AI -> preview -> approve -> apply -> verify");
