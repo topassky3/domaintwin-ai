@@ -106,7 +106,7 @@ function operationSide(operation: RecoveryOperation, side: "before" | "after"): 
 
 function RecoveryOperations({ plan }: { plan: RecoveryPlan }) {
   if (!plan.operations.length) {
-    return <EmptyState title="No mutation required" copy="Current DNS already matches the known-good target." />;
+    return <EmptyState title="No mutation required" copy="Current DNS already matches the known-good target. DomainTwin only needs to verify the live fingerprint." />;
   }
 
   return (
@@ -144,6 +144,7 @@ export function RecoveryDashboard() {
   );
 
   const [selectedDomain, setSelectedDomain] = useState("");
+  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
   const [plans, setPlans] = useState<RecoveryPlan[]>([]);
   const [plansLoaded, setPlansLoaded] = useState(false);
   const [plansError, setPlansError] = useState<string | null>(null);
@@ -190,9 +191,24 @@ export function RecoveryDashboard() {
     };
   }, [names, domains.data]);
 
-  const activeSummary = useMemo(
-    () => plans.find((plan) => plan.domainName === selectedDomain) ?? null,
+  const domainPlans = useMemo(
+    () => plans.filter((plan) => plan.domainName === selectedDomain),
     [plans, selectedDomain],
+  );
+
+  useEffect(() => {
+    if (!domainPlans.length) {
+      setSelectedPlanId(null);
+      return;
+    }
+    if (!selectedPlanId || !domainPlans.some((plan) => plan.id === selectedPlanId)) {
+      setSelectedPlanId(domainPlans[0].id);
+    }
+  }, [domainPlans, selectedPlanId]);
+
+  const activeSummary = useMemo(
+    () => domainPlans.find((plan) => plan.id === selectedPlanId) ?? domainPlans[0] ?? null,
+    [domainPlans, selectedPlanId],
   );
 
   useEffect(() => {
@@ -228,6 +244,7 @@ export function RecoveryDashboard() {
 
   function upsert(plan: RecoveryPlan) {
     setPlans((current) => [plan, ...current.filter((item) => item.id !== plan.id)]);
+    setSelectedPlanId(plan.id);
     setActivePlan(plan);
   }
 
@@ -287,6 +304,7 @@ export function RecoveryDashboard() {
     expectedFingerprint?: string;
     actualFingerprint?: string;
   } | undefined;
+  const verificationOnly = Boolean(activePlan && activePlan.operationCount === 0);
 
   return (
     <>
@@ -294,7 +312,7 @@ export function RecoveryDashboard() {
         <div>
           <span className="eyebrow">RECOVERY CONTROL</span>
           <h1>Verified recovery workspace</h1>
-          <p>Preview exact Current → Known-Good operations, require explicit approval, mutate through name.com and independently verify the resulting fingerprint.</p>
+          <p>Preview exact Current → Known-Good operations, require explicit approval, mutate through name.com only when needed, and independently verify the resulting fingerprint.</p>
         </div>
         <div className="product-heading-actions">
           <span className={environment === "PRODUCTION" ? "product-env product-env--production product-env--large" : "product-env product-env--sandbox product-env--large"}>{environment}</span>
@@ -303,7 +321,7 @@ export function RecoveryDashboard() {
 
       <div className="product-recovery-safety">
         <strong>Human approval boundary</strong>
-        <span>Preview never mutates DNS. Apply remains blocked by the backend until approval and mutation guards allow it.</span>
+        <span>Preview never mutates DNS. If the target already matches live DNS, DomainTwin performs verification only; provider mutations remain guarded by the backend.</span>
       </div>
 
       {actionError ? <ErrorState message={actionError} /> : null}
@@ -320,21 +338,31 @@ export function RecoveryDashboard() {
           <div className="product-recovery-toolbar">
             <label>
               <span>DOMAIN</span>
-              <select value={selectedDomain} onChange={(event) => setSelectedDomain(event.target.value)}>
+              <select value={selectedDomain} onChange={(event) => { setSelectedDomain(event.target.value); setSelectedPlanId(null); }}>
                 {names.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
             </label>
+            {domainPlans.length ? (
+              <label>
+                <span>PLAN HISTORY</span>
+                <select value={selectedPlanId ?? ""} onChange={(event) => setSelectedPlanId(Number(event.target.value))}>
+                  {domainPlans.map((plan) => (
+                    <option key={plan.id} value={plan.id}>#{plan.id} · {plan.status} · {plan.operationCount} ops</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <button className="button button--secondary" disabled={busy === "preview"} onClick={createPreview} type="button">
               {busy === "preview" ? "Planning…" : activePlan ? "Re-check / create preview" : "Create rollback preview"}
             </button>
             {activePlan?.requiresApproval ? (
               <button className="button button--primary" disabled={busy === "approve"} onClick={approve} type="button">
-                {busy === "approve" ? "Approving…" : "Approve recovery"}
+                {busy === "approve" ? "Approving…" : verificationOnly ? "Approve verification" : "Approve recovery"}
               </button>
             ) : null}
             {activePlan?.canApply ? (
-              <button className="button button--danger" disabled={busy === "apply"} onClick={apply} type="button">
-                {busy === "apply" ? "Applying + verifying…" : "Apply approved recovery"}
+              <button className={verificationOnly ? "button button--primary" : "button button--danger"} disabled={busy === "apply"} onClick={apply} type="button">
+                {busy === "apply" ? (verificationOnly ? "Verifying current DNS…" : "Applying + verifying…") : verificationOnly ? "Verify current DNS" : "Apply approved recovery"}
               </button>
             ) : null}
           </div>
@@ -350,7 +378,7 @@ export function RecoveryDashboard() {
                 <div>
                   <span className="product-card-kicker">PLAN #{activePlan.id}</span>
                   <h2>{activePlan.status}</h2>
-                  <p>{activePlan.operationCount} operation(s) · target snapshot v{activePlan.baselineVersion}</p>
+                  <p>{activePlan.operationCount} operation(s) · target snapshot v{activePlan.baselineVersion}{verificationOnly ? " · verification-only path" : ""}</p>
                 </div>
                 <div><StateBadge state={activePlan.status} /><code>{compactFingerprint(activePlan.planFingerprint)}</code></div>
               </section>
@@ -366,7 +394,7 @@ export function RecoveryDashboard() {
               <div className="product-grid product-grid--2 product-grid--lower">
                 <article className="product-card">
                   <span className="product-card-kicker">VERIFICATION</span>
-                  <h3>{activePlan.status === "RECOVERED" ? "Expected equals actual" : "Post-mutation proof"}</h3>
+                  <h3>{activePlan.status === "RECOVERED" ? "Expected equals actual" : verificationOnly ? "Verify already-matching DNS" : "Post-mutation proof"}</h3>
                   <div className="product-verification-grid">
                     <div><span>EXPECTED</span><code>{compactFingerprint(activePlan.targetFingerprint)}</code></div>
                     <div><span>ACTUAL</span><code>{compactFingerprint(verified?.actualFingerprint)}</code></div>
