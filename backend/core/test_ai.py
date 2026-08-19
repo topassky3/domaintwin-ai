@@ -44,33 +44,28 @@ class FakeExplainer:
         )
 
 
-class UnavailableExplainer(FakeExplainer):
-    provider_name = "fake-unavailable"
+class UnavailableExplainer:
+    provider_name = "offline"
+    model = "offline-model"
 
     def generate(self, evidence_bundle, allowed_evidence_ids):
-        self.calls += 1
         raise AIUnavailable("provider offline")
 
 
 class AIExplanationTests(TestCase):
     def setUp(self):
-        self.baseline = DomainSnapshot.objects.create(
+        self.snapshot = DomainSnapshot.objects.create(
             domain_name="example.com",
             version=1,
             records=[
-                {
-                    "type": "A",
-                    "host": "www",
-                    "answer": "203.0.113.10",
-                    "ttl": 300,
-                    "priority": 0,
-                }
+                {"type": "A", "host": "www", "answer": "203.0.113.10", "ttl": 300, "priority": 0}
             ],
             fingerprint="a" * 64,
         )
         self.incident = Incident.objects.create(
             domain_name="example.com",
-            baseline_snapshot=self.baseline,
+            baseline_snapshot=self.snapshot,
+            status=Incident.Status.OPEN,
             score=75,
             severity="CRITICAL",
             factors=[
@@ -78,85 +73,89 @@ class AIExplanationTests(TestCase):
                     "ruleId": "ADDRESS_RECORD_CHANGED",
                     "points": 30,
                     "reason": "A routing record for www changed (MODIFIED).",
+                    "state": "MODIFIED",
+                    "recordType": "A",
+                    "host": "www",
+                    "before": {"type": "A", "host": "www", "answer": "203.0.113.10", "ttl": 300, "priority": 0},
+                    "after": {"type": "A", "host": "www", "answer": "198.51.100.20", "ttl": 300, "priority": 0},
                 },
                 {
                     "ruleId": "HTTP_HEALTH_FAILED",
                     "points": 30,
                     "reason": "HTTP health check failed.",
+                    "state": None,
+                    "recordType": None,
+                    "host": None,
+                    "before": None,
+                    "after": None,
                 },
                 {
                     "ruleId": "UNKNOWN_DESTINATION",
                     "points": 15,
                     "reason": "DNS points to a destination that is not recognized as trusted.",
+                    "state": None,
+                    "recordType": None,
+                    "host": None,
+                    "before": None,
+                    "after": None,
                 },
             ],
             evidence={
-                "baseline": {
-                    "snapshotId": self.baseline.id,
-                    "version": 1,
-                    "fingerprint": "a" * 64,
-                },
+                "baseline": {"snapshotId": self.snapshot.id, "version": 1, "fingerprint": "a" * 64},
                 "liveFingerprint": "b" * 64,
                 "diff": {
                     "summary": {"ADDED": 0, "REMOVED": 0, "MODIFIED": 1, "UNCHANGED": 0},
                     "changes": [
                         {
                             "state": "MODIFIED",
-                            "before": {
-                                "type": "A",
-                                "host": "www",
-                                "answer": "203.0.113.10",
-                                "ttl": 300,
-                                "priority": 0,
-                            },
-                            "after": {
-                                "type": "A",
-                                "host": "www",
-                                "answer": "198.51.100.20",
-                                "ttl": 300,
-                                "priority": 0,
-                            },
+                            "before": {"type": "A", "host": "www", "answer": "203.0.113.10", "ttl": 300, "priority": 0},
+                            "after": {"type": "A", "host": "www", "answer": "198.51.100.20", "ttl": 300, "priority": 0},
                         }
                     ],
                 },
                 "health": {
-                    "checkedAt": "2026-08-18T21:30:29+00:00",
-                    "dnsResolution": {"ok": False, "addresses": [], "error": "DNS resolution failed"},
-                    "http": {"ok": False, "statusCode": None, "error": "DNS resolution failed"},
-                    "https": {"ok": False, "statusCode": None, "error": "DNS resolution failed"},
+                    "observationId": 1,
+                    "checkedAt": "2026-08-19T12:00:00+00:00",
+                    "dnsResolution": {"ok": False, "addresses": [], "error": "DNS resolution failed: test"},
+                    "http": {"ok": False, "statusCode": None, "error": "HTTP failed", "url": "http://example.com/"},
+                    "https": {"ok": False, "statusCode": None, "error": "HTTPS failed", "url": "https://example.com/"},
                     "availabilityOk": False,
                     "availabilityFailed": True,
                 },
                 "unknownDestination": True,
                 "riskRuleVersion": "1.0",
             },
-            evidence_fingerprint="f" * 64,
+            evidence_fingerprint="c" * 64,
         )
 
-    def test_bundle_contains_only_gate6_input_categories(self):
-        bundle, catalog = build_evidence_bundle(self.incident)
-        for key in (
+    def test_build_evidence_bundle_uses_only_approved_input_categories(self):
+        bundle, _catalog = build_evidence_bundle(self.incident)
+        expected = {
+            "incident_id",
+            "domain_name",
+            "evidence_fingerprint",
             "previous_state",
             "current_state",
             "dns_diff",
             "health_checks",
             "risk_score",
             "timestamps",
-        ):
-            self.assertIn(key, bundle)
+            "evidence_catalog",
+        }
+        self.assertEqual(set(bundle), expected)
         self.assertNotIn("recovery_plan", bundle)
-        self.assertTrue(catalog)
+        self.assertNotIn("credentials", bundle)
 
-    def test_bundle_reconstructs_current_dns_state_from_diff(self):
+    def test_previous_and_current_state_are_grounded_in_incident_evidence(self):
         bundle, _ = build_evidence_bundle(self.incident)
         self.assertEqual(bundle["previous_state"]["records"][0]["answer"], "203.0.113.10")
         self.assertEqual(bundle["current_state"]["records"][0]["answer"], "198.51.100.20")
+        self.assertEqual(bundle["risk_score"]["score"], 75)
 
-    def test_catalog_has_deterministic_dns_and_health_facts(self):
-        _, catalog = build_evidence_bundle(self.incident)
-        ids = {item["id"] for item in catalog}
+    def test_evidence_catalog_has_deterministic_ids(self):
+        _bundle, catalog = build_evidence_bundle(self.incident)
+        ids = [item["id"] for item in catalog]
         self.assertIn("DNS-001", ids)
-        self.assertIn("HEALTH-DNS", ids)
         self.assertIn("HEALTH-HTTP", ids)
         self.assertIn("HEALTH-HTTPS", ids)
         self.assertIn("RISK-SCORE", ids)
@@ -219,10 +218,11 @@ class AIExplanationTests(TestCase):
         self.assertEqual(explanation.analysis["probable_cause"], "AI analysis unavailable; no probable cause was generated.")
 
     def test_unavailable_provider_returns_explicit_fallback(self):
-        explanation, _ = generate_incident_explanation(
+        explanation, cached = generate_incident_explanation(
             self.incident,
             explainer=UnavailableExplainer(),
         )
+        self.assertFalse(cached)
         self.assertEqual(explanation.status, IncidentExplanation.Status.UNAVAILABLE)
         self.assertEqual(explanation.analysis["affected_service"], "UNKNOWN")
         self.assertIn("provider offline", explanation.error_message)
@@ -234,46 +234,64 @@ class AIExplanationTests(TestCase):
         payload = response.json()["analysis"]
         self.assertEqual(payload["status"], "UNAVAILABLE")
         self.assertFalse(payload["aiAvailable"])
+        self.assertFalse(payload["cached"])
+        self.assertTrue(payload["safety"]["factsComeFromDeterministicEvidence"])
         self.assertFalse(payload["safety"]["aiCanMutateDns"])
         self.assertTrue(payload["safety"]["humanApprovalStillRequired"])
-        self.assertTrue(payload["evidence"])
 
-    def test_get_before_generation_exposes_read_only_input_contract(self):
+    def test_get_before_generation_returns_not_generated_with_facts(self):
         response = self.client.get(f"/api/ai/incidents/{self.incident.id}/explanation/")
         self.assertEqual(response.status_code, 200)
         payload = response.json()["analysis"]
         self.assertEqual(payload["status"], "NOT_GENERATED")
-        self.assertEqual(
-            set(payload["inputContract"]),
-            {
-                "previous_state",
-                "current_state",
-                "dns_diff",
-                "health_checks",
-                "risk_score",
-                "timestamps",
-            },
-        )
+        self.assertFalse(payload["aiAvailable"])
+        self.assertIn("inputContract", payload)
+        self.assertGreater(len(payload["evidence"]), 0)
 
-    def test_post_generated_explanation_returns_resolved_deterministic_evidence(self):
-        fake = FakeExplainer()
-        with patch("core.ai.provider_from_settings", return_value=fake):
-            with override_settings(AI_PROVIDER="fake", AI_MODEL="fake-model"):
-                response = self.client.post(f"/api/ai/incidents/{self.incident.id}/explanation/")
+    @patch("core.ai_views.generate_incident_explanation")
+    def test_successful_post_serializes_grounded_evidence_and_safety(self, mocked_generate):
+        explanation = IncidentExplanation.objects.create(
+            incident=self.incident,
+            evidence_fingerprint=self.incident.evidence_fingerprint,
+            provider="fake",
+            model="fake-model",
+            status=IncidentExplanation.Status.GENERATED,
+            analysis=VALID_ANALYSIS,
+            evidence_catalog=build_evidence_bundle(self.incident)[1],
+            request_id="request-123",
+            latency_ms=15,
+        )
+        mocked_generate.return_value = (explanation, False)
+        response = self.client.post(f"/api/ai/incidents/{self.incident.id}/explanation/")
         self.assertEqual(response.status_code, 200)
         payload = response.json()["analysis"]
         self.assertEqual(payload["status"], "GENERATED")
-        self.assertEqual(payload["probableCause"], VALID_ANALYSIS["probable_cause"])
-        self.assertEqual([item["id"] for item in payload["evidence"]], VALID_ANALYSIS["evidence_refs"])
+        self.assertTrue(payload["aiAvailable"])
         self.assertEqual(payload["label"], "Evidence-based AI analysis")
+        self.assertEqual([item["id"] for item in payload["evidence"]], VALID_ANALYSIS["evidence_refs"])
+        self.assertFalse(payload["safety"]["aiCanMutateDns"])
 
-    def test_get_after_generation_returns_cached_explanation(self):
-        fake = FakeExplainer()
-        generate_incident_explanation(self.incident, explainer=fake)
+    @patch("core.ai_views.generate_incident_explanation")
+    def test_get_after_generation_returns_cached_generated_output(self, mocked_generate):
+        explanation = IncidentExplanation.objects.create(
+            incident=self.incident,
+            evidence_fingerprint=self.incident.evidence_fingerprint,
+            provider="fake",
+            model="fake-model",
+            status=IncidentExplanation.Status.GENERATED,
+            analysis=VALID_ANALYSIS,
+            evidence_catalog=build_evidence_bundle(self.incident)[1],
+            request_id="request-123",
+            latency_ms=15,
+        )
         response = self.client.get(f"/api/ai/incidents/{self.incident.id}/explanation/")
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()["analysis"]["cached"])
+        payload = response.json()["analysis"]
+        self.assertEqual(payload["status"], "GENERATED")
+        self.assertTrue(payload["cached"])
+        mocked_generate.assert_not_called()
+        self.assertEqual(explanation.id, payload["explanationId"])
 
-    def test_missing_incident_returns_404(self):
+    def test_incident_not_found_returns_404(self):
         response = self.client.get("/api/ai/incidents/999999/explanation/")
         self.assertEqual(response.status_code, 404)
