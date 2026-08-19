@@ -103,7 +103,7 @@ export function OverviewDashboard() {
           <h1>Domain continuity at a glance</h1>
           <p>Current operational state is separated from historical incident risk so recovery status is unambiguous.</p>
         </div>
-        <div className="product-heading-actions"><Link className="button button--primary" href={`/app/domains/${encoded}`}>Open domain</Link></div>
+        <div className="product-heading-actions"><Link className="button button--primary" href={`/app/domains/${encoded}`}>Open domain</Link><Link className="button button--secondary" href="/app/emergency">Emergency domain</Link></div>
       </div>
 
       <section className={`product-hero-status product-hero-status--${state.toLowerCase()}`}>
@@ -143,8 +143,8 @@ export function OverviewDashboard() {
       </div>
 
       <div className="product-grid product-grid--2 product-grid--lower">
-        <article className="product-card product-card--navy"><span className="product-card-kicker">NAME.COM INTEGRATION</span><h3>Provider operations stay visible.</h3><p>Detection, rollback and verification all depend on provider state.</p><div className="product-endpoint-stack"><span>LIST DOMAINS</span><span>READ DNS</span><span>DIFF</span><span>SNAPSHOT</span><span>UPDATE DNS</span><span>VERIFY DNS</span></div></article>
-        <article className="product-card"><span className="product-card-kicker">SAFETY CONTRACT</span><h3>AI explains. Humans approve. DomainTwin verifies.</h3><div className="product-safety-list"><span>✓ Deterministic risk score</span><span>✓ Evidence-grounded AI</span><span>✓ Explicit human approval</span><span>✓ Post-mutation verification</span></div></article>
+        <article className="product-card product-card--navy"><span className="product-card-kicker">NAME.COM INTEGRATION</span><h3>Provider operations stay visible.</h3><p>Detection, rollback, emergency-domain registration and verification all depend on provider state.</p><div className="product-endpoint-stack"><span>LIST DOMAINS</span><span>READ DNS</span><span>SEARCH</span><span>CHECK</span><span>REGISTER</span><span>CLONE DNS</span><span>VERIFY DNS</span></div><Link className="product-text-link" href="/app/emergency">Open emergency continuity →</Link></article>
+        <article className="product-card"><span className="product-card-kicker">SAFETY CONTRACT</span><h3>AI explains. Humans approve. DomainTwin verifies.</h3><div className="product-safety-list"><span>✓ Deterministic risk score</span><span>✓ Evidence-grounded AI</span><span>✓ Explicit human approval</span><span>✓ Sandbox-only emergency registration</span><span>✓ Post-mutation verification</span></div></article>
       </div>
     </>
   );
