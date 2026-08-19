@@ -1,5 +1,5 @@
-import { RecoveryView } from "@/components/ProductViews";
+import { RecoveryDashboard } from "@/components/RecoveryDashboard";
 
 export default function RecoveryPage() {
-  return <RecoveryView />;
+  return <RecoveryDashboard />;
 }
