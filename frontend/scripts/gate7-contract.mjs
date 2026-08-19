@@ -52,6 +52,8 @@ if (!failures.length) {
     [recoveryDashboard.includes("Create rollback preview") || recoveryDashboard.includes("Re-check / create preview"), "recovery preview action missing"],
     [recoveryDashboard.includes("Approve recovery"), "human approval action missing"],
     [recoveryDashboard.includes("Apply approved recovery"), "approved recovery apply action missing"],
+    [recoveryDashboard.includes("Verify current DNS") && recoveryDashboard.includes("verification-only path"), "zero-operation recovery must be presented as verification-only, not mutation"],
+    [recoveryDashboard.includes("PLAN HISTORY") && recoveryDashboard.includes("selectedPlanId"), "recovery plan history selector missing"],
     [recoveryDashboard.includes("Post-mutation proof") && recoveryDashboard.includes("EXPECTED") && recoveryDashboard.includes("ACTUAL"), "verification UI missing"],
     [recoveryDashboard.includes("recovery/plans/${activeSummary.id}/") && recoveryDashboard.includes("AUDIT TRAIL"), "recovery UI must load full plan detail including historical audit"],
     [recoveryRoute.includes("RecoveryDashboard"), "recovery route must use detailed recovery dashboard"],
@@ -82,6 +84,8 @@ console.log("Provider status fallback: domains reachability prevents false offli
 console.log("Risk semantics: active vs historical separated");
 console.log("Domain metadata privacy: contacts blocked at backend boundary");
 console.log("Recovery detail: full historical audit loaded from plan detail endpoint");
+console.log("Recovery zero-op safety: already-matching DNS uses verification-only UI");
+console.log("Recovery history: operator can inspect earlier plans without creating mutations");
 console.log("Core flow: status -> evidence -> AI -> preview -> approve -> apply -> verify");
 console.log("External-call states: loading/error/empty present");
 console.log("Secrets: server-side proxy boundary preserved");
