@@ -8,6 +8,18 @@ from .namecom import NameComAPIError, NameComClient
 
 
 ALLOWED_RECORD_FIELDS = {"type", "host", "answer", "ttl", "priority"}
+SAFE_DOMAIN_FIELDS = {
+    "domainName",
+    "createDate",
+    "expireDate",
+    "autorenewEnabled",
+    "locked",
+    "locks",
+    "transferLockExpiresAt",
+    "privacyEnabled",
+    "nameservers",
+    "renewalPrice",
+}
 
 
 def _cors(response: JsonResponse) -> JsonResponse:
@@ -60,6 +72,16 @@ def _record_payload(request) -> dict:
     return {key: value for key, value in payload.items() if key in ALLOWED_RECORD_FIELDS}
 
 
+def _safe_domain_payload(payload: dict) -> dict:
+    """Return only operational metadata required by DomainTwin's browser UI.
+
+    name.com domain responses can contain registrant/admin/billing/tech contacts.
+    Those values are not needed for continuity monitoring and must not cross the
+    backend-to-browser boundary.
+    """
+    return {key: payload[key] for key in SAFE_DOMAIN_FIELDS if key in payload}
+
+
 def health(request):
     return _json({"status": "ok", "service": "domaintwin-api"})
 
@@ -102,7 +124,8 @@ def namecom_domain(request, domain_name: str):
         return _json({})
     try:
         client = _client()
-        return _json({"environment": client.environment, "domain": client.get_domain(domain_name)})
+        domain = client.get_domain(domain_name)
+        return _json({"environment": client.environment, "domain": _safe_domain_payload(domain)})
     except Exception as exc:
         return _error_response(exc)
 
