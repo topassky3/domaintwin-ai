@@ -288,6 +288,14 @@ def _mark_failed(
     return plan
 
 
+def _registration_payload(plan: EmergencyDomainPlan) -> dict[str, Any]:
+    return {
+        "domain": {"domainName": plan.target_domain_name},
+        "purchaseType": "registration",
+        "years": 1,
+    }
+
+
 def apply_emergency_plan(
     plan: EmergencyDomainPlan,
     *,
@@ -295,49 +303,66 @@ def apply_emergency_plan(
 ) -> EmergencyDomainPlan:
     if plan.status == EmergencyDomainPlan.Status.READY:
         return plan
-    if plan.status != EmergencyDomainPlan.Status.APPROVED:
+    if plan.status not in {
+        EmergencyDomainPlan.Status.APPROVED,
+        EmergencyDomainPlan.Status.APPLYING,
+    }:
         raise EmergencyDomainApprovalRequired(
-            f"Emergency domain apply requires APPROVED status; current status is {plan.status}."
+            f"Emergency domain apply requires APPROVED/APPLYING status; current status is {plan.status}."
         )
 
-    current = check_candidate(client, plan.target_domain_name)
-    if not current.get("purchasable") or current.get("purchaseType") != "registration" or current.get("premium"):
-        _mark_failed(
+    first_attempt = plan.status == EmergencyDomainPlan.Status.APPROVED
+    if first_attempt:
+        current = check_candidate(client, plan.target_domain_name)
+        if not current.get("purchasable") or current.get("purchaseType") != "registration" or current.get("premium"):
+            _mark_failed(
+                plan,
+                status=EmergencyDomainPlan.Status.STALE,
+                event_type="AVAILABILITY_RECHECK_FAILED",
+                message="Target domain availability or pricing class changed before registration.",
+            )
+            raise EmergencyDomainStale("Target domain availability changed; create a new preview.")
+
+        plan.status = EmergencyDomainPlan.Status.APPLYING
+        plan.applied_at = timezone.now()
+        plan.save(update_fields=["status", "applied_at", "updated_at"])
+        append_emergency_audit(
             plan,
-            status=EmergencyDomainPlan.Status.STALE,
-            event_type="AVAILABILITY_RECHECK_FAILED",
-            message="Target domain availability or pricing class changed before registration.",
+            "REGISTRATION_STARTED",
+            {"targetDomain": plan.target_domain_name, "environment": client.environment},
         )
-        raise EmergencyDomainStale("Target domain availability changed; create a new preview.")
+    else:
+        append_emergency_audit(
+            plan,
+            "APPLY_RESUMED",
+            {
+                "targetDomain": plan.target_domain_name,
+                "registrationPersisted": bool(plan.registration),
+            },
+        )
 
-    plan.status = EmergencyDomainPlan.Status.APPLYING
-    plan.applied_at = timezone.now()
-    plan.save(update_fields=["status", "applied_at", "updated_at"])
-    append_emergency_audit(
-        plan,
-        "REGISTRATION_STARTED",
-        {"targetDomain": plan.target_domain_name, "environment": client.environment},
-    )
-
-    registration_raw = client.create_domain(
-        {
-            "domain": {"domainName": plan.target_domain_name},
-            "purchaseType": "registration",
-            "years": 1,
-        },
-        idempotency_key=plan.idempotency_key,
-    )
-    plan.registration = _safe_registration(registration_raw, plan.target_domain_name)
-    plan.save(update_fields=["registration", "updated_at"])
-    append_emergency_audit(
-        plan,
-        "DOMAIN_REGISTERED",
-        {
-            "targetDomain": plan.target_domain_name,
-            "order": plan.registration.get("order"),
-            "totalPaid": plan.registration.get("totalPaid"),
-        },
-    )
+    if not plan.registration:
+        if not first_attempt:
+            append_emergency_audit(
+                plan,
+                "REGISTRATION_RETRY",
+                {"targetDomain": plan.target_domain_name},
+            )
+        registration_raw = client.create_domain(
+            _registration_payload(plan),
+            idempotency_key=plan.idempotency_key,
+        )
+        plan.registration = _safe_registration(registration_raw, plan.target_domain_name)
+        plan.save(update_fields=["registration", "updated_at"])
+        append_emergency_audit(
+            plan,
+            "DOMAIN_REGISTERED",
+            {
+                "targetDomain": plan.target_domain_name,
+                "order": plan.registration.get("order"),
+                "totalPaid": plan.registration.get("totalPaid"),
+            },
+        )
 
     live_payload = client.list_records(plan.target_domain_name)
     live_raw = live_payload.get("records") or []
@@ -355,7 +380,7 @@ def apply_emergency_plan(
     plan.save(update_fields=["operations", "updated_at"])
     append_emergency_audit(plan, "CLONE_STARTED", {"operationCount": len(actual_operations)})
 
-    results: list[dict[str, Any]] = []
+    results = list(plan.operation_results or [])
     for operation in actual_operations:
         desired = operation.get("after") or {}
         try:
@@ -386,10 +411,18 @@ def apply_emergency_plan(
                     "status": "FAILED",
                     "record": desired,
                     "error": exc.message,
+                    "retryable": exc.retryable,
                 }
             )
             plan.operation_results = results
             plan.save(update_fields=["operation_results", "updated_at"])
+            if exc.retryable:
+                append_emergency_audit(
+                    plan,
+                    "DNS_CLONE_RETRYABLE_FAILURE",
+                    {"message": exc.message},
+                )
+                raise
             return _mark_failed(
                 plan,
                 status=EmergencyDomainPlan.Status.PARTIAL,
@@ -397,7 +430,7 @@ def apply_emergency_plan(
                 message=exc.message,
             )
 
-    verified_raw = (client.list_records(plan.target_domain_name).get("records") or [])
+    verified_raw = client.list_records(plan.target_domain_name).get("records") or []
     normalized_verified = normalize_records(verified_raw)
     actual_fingerprint = snapshot_fingerprint(normalized_verified)
     matched = actual_fingerprint == plan.expected_fingerprint
