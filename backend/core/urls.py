@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .ai_views import incident_explanation
 from .monitor_views import (
     domain_health,
     domain_incidents,
@@ -84,6 +85,11 @@ urlpatterns = [
         "incidents/<int:incident_id>/",
         incident_detail,
         name="incident-detail",
+    ),
+    path(
+        "ai/incidents/<int:incident_id>/explanation/",
+        incident_explanation,
+        name="incident-ai-explanation",
     ),
     path(
         "recovery/domains/<str:domain_name>/plans/",
