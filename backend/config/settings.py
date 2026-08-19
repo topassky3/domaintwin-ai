@@ -29,6 +29,9 @@ NAMECOM_API_TOKEN = os.getenv("NAMECOM_API_TOKEN", "").strip()
 NAMECOM_TIMEOUT_SECONDS = float(os.getenv("NAMECOM_TIMEOUT_SECONDS", "10"))
 NAMECOM_ALLOW_MUTATIONS = os.getenv("NAMECOM_ALLOW_MUTATIONS", "0") == "1"
 NAMECOM_ALLOW_PRODUCTION_MUTATIONS = os.getenv("NAMECOM_ALLOW_PRODUCTION_MUTATIONS", "0") == "1"
+# Gate 8 registration is intentionally sandbox-only. DNS mutation permission is
+# not enough: this second switch must also be enabled for the sandbox drill.
+NAMECOM_ALLOW_DOMAIN_REGISTRATION = os.getenv("NAMECOM_ALLOW_DOMAIN_REGISTRATION", "0") == "1"
 
 DOMAIN_HEALTH_TIMEOUT_SECONDS = float(os.getenv("DOMAIN_HEALTH_TIMEOUT_SECONDS", "4"))
 
