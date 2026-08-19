@@ -89,14 +89,18 @@ export function DomainWorkspaceDashboard({ domain }: { domain: string }) {
     }
   }
 
-  const activeIncident = monitor.data?.activeIncident ?? null;
+  const activeIncident = evaluation?.incident ?? monitor.data?.activeIncident ?? null;
   const latestIncident = activeIncident ?? incidents.data?.incidents?.[0] ?? null;
   const latestPlan = plans.data?.plans?.[0] ?? null;
+  const activeIncidentPlan = activeIncident
+    ? plans.data?.plans?.find((plan) => plan.incidentId === activeIncident.id) ?? null
+    : null;
+  const displayedPlan = activeIncident ? activeIncidentPlan : latestPlan;
   const state = evaluation?.state ?? monitor.data?.state ?? "UNKNOWN";
   const evaluationRisk = evaluation?.risk ?? null;
   const currentRiskScore = evaluationRisk?.score ?? activeIncident?.score ?? null;
   const currentRiskSeverity = evaluationRisk?.severity ?? activeIncident?.severity ?? null;
-  const recovered = latestPlan?.status === "RECOVERED";
+  const recovered = !activeIncident && latestPlan?.status === "RECOVERED";
   const healthFailed = monitor.data?.latestHealth ? !monitor.data.latestHealth.availabilityOk : false;
 
   const stateCopy = state === "INCIDENT"
@@ -108,6 +112,13 @@ export function DomainWorkspaceDashboard({ domain }: { domain: string }) {
         : state === "HEALTHY"
           ? "Current monitoring state is healthy and no incident is open."
           : "Current operational state is being established from backend evidence.";
+
+  const recoveryValue = displayedPlan?.status ?? (activeIncident ? "NO PLAN YET" : "NO PLAN");
+  const recoveryHint = displayedPlan
+    ? `${displayedPlan.operationCount} operation(s)${activeIncident ? ` · incident #${activeIncident.id}` : ""}`
+    : activeIncident
+      ? `Create a preview for incident #${activeIncident.id}`
+      : "No recovery history";
 
   return (
     <>
@@ -141,7 +152,7 @@ export function DomainWorkspaceDashboard({ domain }: { domain: string }) {
         <Metric label="HTTP" value={monitor.data?.latestHealth?.http?.ok ? "OK" : monitor.data?.latestHealth ? "FAILED" : "NO CHECK"} />
         <Metric label="HTTPS" value={monitor.data?.latestHealth?.https?.ok ? "OK" : monitor.data?.latestHealth ? "FAILED" : "NO CHECK"} />
         <Metric label="ACTIVE INCIDENT" value={activeIncident ? `#${activeIncident.id}` : "NONE"} hint={activeIncident ? activeIncident.severity : latestIncident ? `Latest #${latestIncident.id} · ${latestIncident.status}` : "No history"} />
-        <Metric label="DNS RECOVERY" value={latestPlan?.status ?? "NO PLAN"} hint={latestPlan ? `${latestPlan.operationCount} operation(s)` : "No recovery history"} />
+        <Metric label={activeIncident ? "INCIDENT RECOVERY" : "DNS RECOVERY"} value={recoveryValue} hint={recoveryHint} />
       </div>
 
       <div className="product-grid product-grid--3">
@@ -172,7 +183,7 @@ export function DomainWorkspaceDashboard({ domain }: { domain: string }) {
           <span className="product-card-kicker">RECOVERY BOUNDARY</span>
           <h3>Human-approved mutation only</h3>
           <p>Creating a preview does not mutate DNS. The backend requires explicit approval and rechecks provider state before apply.</p>
-          <div className="product-inline-actions"><Link className="button button--primary" href="/app/recovery">Open recovery workspace</Link>{latestPlan ? <StateBadge state={latestPlan.status} /> : null}</div>
+          <div className="product-inline-actions"><Link className="button button--primary" href="/app/recovery">Open recovery workspace</Link>{displayedPlan ? <StateBadge state={displayedPlan.status} /> : null}</div>
         </article>
       </div>
     </>
