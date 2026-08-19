@@ -64,14 +64,14 @@ Default safe configuration:
 
 ```env
 AI_PROVIDER=disabled
-AI_MODEL=gpt-5-mini
+AI_MODEL=gpt-5.6-luna
 OPENAI_API_KEY=
 AI_API_BASE_URL=https://api.openai.com/v1
 AI_TIMEOUT_SECONDS=15
 AI_MAX_OUTPUT_TOKENS=700
 ```
 
-`gpt-5-mini` is used as the default API model because it is a cost-efficient OpenAI model suitable for well-defined structured tasks. The model remains configurable through `AI_MODEL`.
+`gpt-5.6-luna` is the default because OpenAI positions GPT-5.6 Luna for cost-sensitive workloads. The model remains configurable through `AI_MODEL`.
 
 Do not commit or paste API keys into chat, logs, screenshots or the repository.
 
@@ -184,7 +184,7 @@ Stop Django, edit only local `backend/.env`, and configure:
 
 ```env
 AI_PROVIDER=openai
-AI_MODEL=gpt-5-mini
+AI_MODEL=gpt-5.6-luna
 OPENAI_API_KEY=<local secret>
 ```
 
