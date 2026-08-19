@@ -17,26 +17,51 @@ export function ProductShell({ children }: { children: ReactNode }) {
   const [provider, setProvider] = useState<NameComStatus | null>(null);
   const [providerError, setProviderError] = useState<string | null>(null);
   const [domains, setDomains] = useState<string[]>([]);
+  const [domainsReachable, setDomainsReachable] = useState(false);
+  const [fallbackEnvironment, setFallbackEnvironment] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    async function readStatus() {
+      try {
+        const value = await api<NameComStatus>("namecom/status/");
+        if (cancelled) return;
+        setProvider(value);
+        setProviderError(null);
+      } catch (reason) {
+        if (cancelled) return;
+        setProviderError(reason instanceof Error ? reason.message : "Provider status unavailable");
+      }
+    }
+
     Promise.allSettled([
       api<NameComStatus>("namecom/status/"),
       api<DomainsResponse>("namecom/domains/"),
     ]).then(([statusResult, domainsResult]) => {
       if (cancelled) return;
+
       if (statusResult.status === "fulfilled") {
         setProvider(statusResult.value);
         setProviderError(null);
       } else {
-        setProviderError(statusResult.reason instanceof Error ? statusResult.reason.message : "Provider unavailable");
+        setProviderError(statusResult.reason instanceof Error ? statusResult.reason.message : "Provider status unavailable");
+        retryTimer = setTimeout(() => void readStatus(), 1200);
       }
+
       if (domainsResult.status === "fulfilled") {
         setDomains(domainsResult.value.domains.map(domainNameOf).filter(Boolean));
+        setDomainsReachable(true);
+        setFallbackEnvironment(domainsResult.value.environment ?? null);
+      } else {
+        setDomainsReachable(false);
       }
     });
+
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, []);
 
@@ -46,8 +71,27 @@ export function ProductShell({ children }: { children: ReactNode }) {
     return domains[0] ?? null;
   }, [pathname, domains]);
 
-  const environment = provider?.environment?.toUpperCase() ?? "UNKNOWN";
-  const environmentClass = environment === "PRODUCTION" ? "product-env--production" : "product-env--sandbox";
+  const providerReachable = Boolean(provider) || domainsReachable;
+  const environment = String(provider?.environment ?? fallbackEnvironment ?? "UNKNOWN").toUpperCase();
+  const environmentClass = environment === "PRODUCTION"
+    ? "product-env--production"
+    : environment === "SANDBOX"
+      ? "product-env--sandbox"
+      : "";
+  const connectionLabel = provider
+    ? "NAME.COM CONNECTED"
+    : domainsReachable
+      ? "NAME.COM CONNECTED"
+      : providerError
+        ? "PROVIDER STATUS UNAVAILABLE"
+        : "CHECKING PROVIDER";
+  const providerDetail = provider
+    ? "API connected"
+    : domainsReachable
+      ? "API connected · status fallback"
+      : providerError
+        ? "Provider status unavailable"
+        : "Checking provider…";
 
   return (
     <div className="product-root">
@@ -90,10 +134,10 @@ export function ProductShell({ children }: { children: ReactNode }) {
         <div className="product-provider-card">
           <div className="product-provider-row">
             <span className={`product-env ${environmentClass}`}>{environment}</span>
-            <span className={provider ? "provider-dot is-online" : "provider-dot"} />
+            <span className={providerReachable ? "provider-dot is-online" : "provider-dot"} />
           </div>
           <strong>{provider?.provider ?? "name.com"}</strong>
-          <small>{provider ? "API connected" : providerError ? "Provider unavailable" : "Checking provider…"}</small>
+          <small>{providerDetail}</small>
           <p>Credentials stay server-side. Browser requests pass through the DomainTwin proxy.</p>
         </div>
       </aside>
@@ -106,8 +150,8 @@ export function ProductShell({ children }: { children: ReactNode }) {
           </div>
           <div className="product-topbar-actions">
             <span className={`product-env product-env--large ${environmentClass}`}>{environment}</span>
-            <span className={provider ? "product-connection is-online" : "product-connection"}>
-              <i /> {provider ? "NAME.COM CONNECTED" : "PROVIDER OFFLINE"}
+            <span className={providerReachable ? "product-connection is-online" : "product-connection"}>
+              <i /> {connectionLabel}
             </span>
             <Link className="button button--secondary" href="/demo">Public demo</Link>
           </div>
