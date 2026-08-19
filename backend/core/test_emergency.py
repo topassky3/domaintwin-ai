@@ -12,7 +12,20 @@ from .emergency import (
 from .models import DomainSnapshot, EmergencyDomainPlan, KnownGoodSnapshot
 from .namecom import NameComAPIError, NameComClient
 from .twin import normalize_records, snapshot_fingerprint
-from .tests import FakeResponse
+
+
+class FakeResponse:
+    def __init__(self, payload: dict):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self):
+        return json.dumps(self.payload).encode("utf-8")
 
 
 @override_settings(
@@ -94,7 +107,7 @@ class NameComEmergencyClientTests(SimpleTestCase):
         request_object = urlopen.call_args.args[0]
         self.assertEqual(request_object.get_method(), "POST")
         self.assertEqual(request_object.full_url, "https://api.dev.name.com/core/v1/domains")
-        self.assertEqual(request_object.headers["X-idempotency-key"], "gate8-idempotency-key")
+        self.assertEqual(request_object.get_header("X-idempotency-key"), "gate8-idempotency-key")
 
 
 class FakeEmergencyClient:
@@ -145,6 +158,32 @@ class FakeEmergencyClient:
         record = {**payload, "id": self.next_id}
         self.records.append(record)
         return record
+
+
+class RetryRegistrationClient(FakeEmergencyClient):
+    def __init__(self, target="rescue-example.com"):
+        super().__init__(target)
+        self.registration_attempts = 0
+        self.availability_checks = 0
+
+    def check_availability(self, domain_names):
+        self.availability_checks += 1
+        return super().check_availability(domain_names)
+
+    def create_domain(self, payload, *, idempotency_key):
+        self.registration_attempts += 1
+        self.registration_keys.append(idempotency_key)
+        if self.registration_attempts == 1:
+            raise NameComAPIError(
+                status_code=504,
+                message="Simulated provider timeout after request submission.",
+                retryable=True,
+            )
+        return {
+            "domain": {"domainName": payload["domain"]["domainName"]},
+            "order": 99,
+            "totalPaid": 0,
+        }
 
 
 class EmergencyDomainPlanTests(TestCase):
@@ -232,3 +271,30 @@ class EmergencyDomainPlanTests(TestCase):
                 "EMERGENCY_DOMAIN_READY",
             ],
         )
+
+    def test_apply_can_resume_registration_with_same_idempotency_key_after_timeout(self):
+        client = RetryRegistrationClient(self.target)
+        plan, _ = create_emergency_plan(
+            source_domain=self.source,
+            target_domain=self.target,
+            client=client,
+        )
+        approve_emergency_plan(plan)
+        checks_before_apply = client.availability_checks
+
+        with self.assertRaises(NameComAPIError):
+            apply_emergency_plan(plan, client=client)
+
+        plan.refresh_from_db()
+        self.assertEqual(plan.status, EmergencyDomainPlan.Status.APPLYING)
+        self.assertEqual(plan.registration, {})
+
+        result = apply_emergency_plan(plan, client=client)
+
+        self.assertEqual(result.status, EmergencyDomainPlan.Status.READY)
+        self.assertEqual(client.registration_keys, [plan.idempotency_key, plan.idempotency_key])
+        self.assertEqual(client.availability_checks, checks_before_apply + 1)
+        events = list(result.audit_events.values_list("event_type", flat=True))
+        self.assertIn("APPLY_RESUMED", events)
+        self.assertIn("REGISTRATION_RETRY", events)
+        self.assertEqual(events[-1], "EMERGENCY_DOMAIN_READY")
