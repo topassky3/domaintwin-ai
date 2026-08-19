@@ -6,6 +6,7 @@ from urllib import error
 from django.test import SimpleTestCase, override_settings
 
 from .namecom import NameComAPIError, NameComClient
+from .views import _safe_domain_payload
 
 
 class FakeResponse:
@@ -89,6 +90,37 @@ class NameComClientTests(SimpleTestCase):
 
         self.assertTrue(context.exception.retryable)
         self.assertEqual(context.exception.status_code, 429)
+
+
+class DomainMetadataSafetyTests(SimpleTestCase):
+    def test_safe_domain_payload_excludes_contact_pii(self):
+        raw = {
+            "domainName": "example.test",
+            "createDate": "2026-08-18T20:15:07Z",
+            "expireDate": "2027-08-18T20:15:07Z",
+            "autorenewEnabled": True,
+            "locked": True,
+            "privacyEnabled": True,
+            "nameservers": ["ns1.example.test"],
+            "renewalPrice": 19.99,
+            "contacts": {
+                "registrant": {
+                    "firstName": "Private",
+                    "email": "private@example.test",
+                    "phone": "+10000000000",
+                    "address1": "Private address",
+                }
+            },
+        }
+
+        safe = _safe_domain_payload(raw)
+
+        self.assertEqual(safe["domainName"], "example.test")
+        self.assertEqual(safe["renewalPrice"], 19.99)
+        self.assertNotIn("contacts", safe)
+        self.assertNotIn("email", json.dumps(safe))
+        self.assertNotIn("phone", json.dumps(safe))
+        self.assertNotIn("address1", json.dumps(safe))
 
 
 @override_settings(
