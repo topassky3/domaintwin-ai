@@ -22,11 +22,13 @@ const shellPath = path.join(root, "src/components/ProductShell.tsx");
 const viewsPath = path.join(root, "src/components/ProductViews.tsx");
 const overviewPath = path.join(root, "src/components/OverviewDashboard.tsx");
 const domainWorkspacePath = path.join(root, "src/components/DomainWorkspaceDashboard.tsx");
+const recoveryDashboardPath = path.join(root, "src/components/RecoveryDashboard.tsx");
 const domainRoutePath = path.join(root, "src/app/app/domains/[domain]/page.tsx");
+const recoveryRoutePath = path.join(root, "src/app/app/recovery/page.tsx");
 const proxyPath = path.join(root, "src/app/api/domaintwin/[...path]/route.ts");
 const backendViewsPath = path.resolve(root, "../backend/core/views.py");
 
-for (const target of [shellPath, viewsPath, overviewPath, domainWorkspacePath, domainRoutePath, proxyPath, backendViewsPath]) {
+for (const target of [shellPath, viewsPath, overviewPath, domainWorkspacePath, recoveryDashboardPath, domainRoutePath, recoveryRoutePath, proxyPath, backendViewsPath]) {
   if (!fs.existsSync(target)) failures.push(`missing file: ${path.relative(root, target)}`);
 }
 
@@ -35,7 +37,9 @@ if (!failures.length) {
   const views = fs.readFileSync(viewsPath, "utf8");
   const overview = fs.readFileSync(overviewPath, "utf8");
   const domainWorkspace = fs.readFileSync(domainWorkspacePath, "utf8");
+  const recoveryDashboard = fs.readFileSync(recoveryDashboardPath, "utf8");
   const domainRoute = fs.readFileSync(domainRoutePath, "utf8");
+  const recoveryRoute = fs.readFileSync(recoveryRoutePath, "utf8");
   const proxy = fs.readFileSync(proxyPath, "utf8");
   const backendViews = fs.readFileSync(backendViewsPath, "utf8");
 
@@ -45,10 +49,12 @@ if (!failures.length) {
     [shell.includes("domainsReachable") && shell.includes("fallbackEnvironment") && shell.includes("API connected · status fallback"), "provider shell must not report false offline when domains endpoint is reachable"],
     [domainWorkspace.includes("Evaluate now"), "domain monitor action missing"],
     [views.includes("Generate explanation"), "AI explanation action missing"],
-    [views.includes("Create rollback preview"), "recovery preview action missing"],
-    [views.includes("Approve recovery"), "human approval action missing"],
-    [views.includes("Apply approved recovery"), "approved recovery apply action missing"],
-    [views.includes("Post-mutation proof") && views.includes("EXPECTED") && views.includes("ACTUAL"), "verification UI missing"],
+    [recoveryDashboard.includes("Create rollback preview") || recoveryDashboard.includes("Re-check / create preview"), "recovery preview action missing"],
+    [recoveryDashboard.includes("Approve recovery"), "human approval action missing"],
+    [recoveryDashboard.includes("Apply approved recovery"), "approved recovery apply action missing"],
+    [recoveryDashboard.includes("Post-mutation proof") && recoveryDashboard.includes("EXPECTED") && recoveryDashboard.includes("ACTUAL"), "verification UI missing"],
+    [recoveryDashboard.includes("recovery/plans/${activeSummary.id}/") && recoveryDashboard.includes("AUDIT TRAIL"), "recovery UI must load full plan detail including historical audit"],
+    [recoveryRoute.includes("RecoveryDashboard"), "recovery route must use detailed recovery dashboard"],
     [views.includes("name.com") && views.includes("Provider operations stay visible"), "name.com integration depth not visible"],
     [views.includes("LoadingState") && views.includes("ErrorState") && views.includes("EmptyState"), "loading/error/empty states missing"],
     [overview.includes("NO ACTIVE INCIDENT RISK") && overview.includes("LATEST INCIDENT RISK"), "overview must separate active and historical risk"],
@@ -75,6 +81,7 @@ console.log("Environment indicator: present");
 console.log("Provider status fallback: domains reachability prevents false offline state");
 console.log("Risk semantics: active vs historical separated");
 console.log("Domain metadata privacy: contacts blocked at backend boundary");
+console.log("Recovery detail: full historical audit loaded from plan detail endpoint");
 console.log("Core flow: status -> evidence -> AI -> preview -> approve -> apply -> verify");
 console.log("External-call states: loading/error/empty present");
 console.log("Secrets: server-side proxy boundary preserved");
