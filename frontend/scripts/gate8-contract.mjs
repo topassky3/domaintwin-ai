@@ -15,6 +15,7 @@ const required = [
   "../backend/core/urls.py",
   "../backend/core/migrations/0005_emergency_domain.py",
   "../backend/core/test_emergency.py",
+  "../docs/GATE8_EMERGENCY_DOMAIN.md",
 ];
 
 for (const relative of required) {
@@ -29,6 +30,7 @@ if (!failures.length) {
   const views = fs.readFileSync(path.resolve(root, "../backend/core/emergency_views.py"), "utf8");
   const urls = fs.readFileSync(path.resolve(root, "../backend/core/urls.py"), "utf8");
   const settings = fs.readFileSync(path.resolve(root, "../backend/config/settings.py"), "utf8");
+  const tests = fs.readFileSync(path.resolve(root, "../backend/core/test_emergency.py"), "utf8");
 
   const checks = [
     [shell.includes("/app/emergency") && shell.includes('"ED", "Emergency"'), "Emergency route missing from permanent navigation"],
@@ -46,6 +48,8 @@ if (!failures.length) {
     [core.includes("build_recovery_operations") && core.includes("CLONE_ABORTED_UNEXPECTED_TARGET_STATE"), "post-registration DNS state must be rechecked before clone"],
     [core.includes('row.get("action") != "CREATE"'), "unpreviewed UPDATE/DELETE mutations must be blocked"],
     [core.includes("snapshot_fingerprint") && core.includes("actual_fingerprint == plan.expected_fingerprint"), "READY must require exact fingerprint verification"],
+    [core.includes("EmergencyDomainPlan.Status.APPLYING") && core.includes("APPLY_RESUMED") && core.includes("REGISTRATION_RETRY"), "APPLYING plans must safely resume with persisted provider idempotency"],
+    [tests.includes("test_apply_can_resume_registration_with_same_idempotency_key_after_timeout"), "registration-timeout resume regression test missing"],
     [views.includes('payload.get("approve") is not True'), "approval endpoint must require explicit approve=true"],
     [views.includes('payload.get("execute") is not True') && views.includes('payload.get("targetDomain") != plan.target_domain_name'), "apply must require exact target confirmation"],
     [urls.includes('path("emergency/search/"') && urls.includes('path("emergency/check/"'), "Gate 8 API routes missing"],
@@ -65,7 +69,7 @@ console.log("GATE 8 CONTRACT PASS");
 console.log("Flow: SEARCH -> CHECK -> PREVIEW -> APPROVE -> REGISTER -> CLONE -> VERIFY -> READY");
 console.log("name.com discovery: literal-colon Core API endpoints present");
 console.log("Registration safety: sandbox-only + mutations flag + second registration flag");
-console.log("Registration retry safety: X-Idempotency-Key required");
+console.log("Registration retry safety: persisted X-Idempotency-Key + APPLYING resume coverage");
 console.log("Human boundary: explicit approval + exact target execution confirmation");
 console.log("DNS safety: post-registration state re-read; unpreviewed UPDATE/DELETE blocked");
 console.log("Verification: READY only when live fingerprint exactly matches known-good snapshot");
