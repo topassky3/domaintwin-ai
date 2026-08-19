@@ -3,7 +3,7 @@
 Branch: `agent/emergency-domain-wow`
 Base: Gate 7 merge on `main` (`5b4c3debc231166194d5b92c252cc596f1915690`).
 
-Implementation is complete enough for local verification. This file intentionally does **not** claim runtime PASS: the local migration, Django tests, frontend contracts, TypeScript build, provider safe-smoke and sandbox Golden Drill are the verification gates.
+Implementation is complete and PR #11 remains intentionally in draft until runtime proof is complete.
 
 ## Implemented
 
@@ -21,15 +21,27 @@ Implementation is complete enough for local verification. This file intentionall
 - `/app/emergency` UI, permanent navigation and Overview CTA.
 - Gate 8 static contract and backend regression coverage.
 
+## Verified locally — Checkpoint 8A (2026-08-19)
+
+- branch HEAD `63fe15667569bb5640aa17bfeb39668643ccbc13`.
+- `makemigrations --check --dry-run` -> `No changes detected`.
+- migration `core.0005_emergency_domain` applied successfully.
+- Django system check -> no issues.
+- Gate 8 focused backend tests -> 10/10 PASS.
+- full `core` regression -> 80/80 PASS.
+- Gate 7 contract -> PASS.
+- Gate 8 contract -> PASS.
+- TypeScript typecheck -> PASS.
+- Next production build -> PASS, including `/app/emergency`.
+- expected build artifacts were produced locally: modified `frontend/next-env.d.ts` and untracked `frontend/tsconfig.tsbuildinfo`; they must be cleaned before final merge verification.
+
 ## Verification still required locally
 
-1. migration check + migrate;
-2. Django check + full `core` test suite;
-3. Gate 7 regression contract;
-4. Gate 8 contract;
-5. TypeScript typecheck + Next production build;
-6. safe provider smoke with registration OFF;
-7. controlled name.com sandbox Golden Drill;
-8. restore safe runtime flags;
-9. final regression + clean working tree;
-10. update PR proof, ready, merge.
+1. clean generated build artifacts;
+2. safe provider/UI smoke with mutations OFF and registration OFF;
+3. verify SEARCH -> CHECK -> PREVIEW from `/app/emergency`;
+4. controlled name.com sandbox Golden Drill;
+5. verify REGISTER -> CLONE -> VERIFY -> READY and exact `MATCH YES`;
+6. restore safe runtime flags;
+7. final regression + clean working tree;
+8. update PR proof, ready, merge.
