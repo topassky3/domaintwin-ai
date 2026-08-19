@@ -10,6 +10,7 @@ const nav = [
   ["DM", "Domains", "/app/domains"],
   ["IN", "Incidents", "/app/incidents"],
   ["RC", "Recovery", "/app/recovery"],
+  ["ED", "Emergency", "/app/emergency"],
 ] as const;
 
 export function ProductShell({ children }: { children: ReactNode }) {
