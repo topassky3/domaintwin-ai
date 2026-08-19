@@ -160,3 +160,36 @@ class RecoveryAuditEvent(models.Model):
                 name="unique_recovery_audit_sequence",
             )
         ]
+
+
+class IncidentExplanation(models.Model):
+    class Status(models.TextChoices):
+        GENERATED = "GENERATED", "Generated"
+        UNAVAILABLE = "UNAVAILABLE", "Unavailable"
+        INVALID = "INVALID", "Invalid provider output"
+
+    incident = models.ForeignKey(
+        Incident,
+        on_delete=models.CASCADE,
+        related_name="ai_explanations",
+    )
+    evidence_fingerprint = models.CharField(max_length=64, db_index=True)
+    provider = models.CharField(max_length=32)
+    model = models.CharField(max_length=96, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices)
+    analysis = models.JSONField(default=dict)
+    evidence_catalog = models.JSONField(default=list)
+    request_id = models.CharField(max_length=128, blank=True)
+    latency_ms = models.PositiveIntegerField(null=True, blank=True)
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["incident", "evidence_fingerprint", "provider", "model"],
+                name="unique_incident_ai_explanation",
+            )
+        ]
