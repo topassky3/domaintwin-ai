@@ -35,7 +35,7 @@ DOMAIN_HEALTH_TIMEOUT_SECONDS = float(os.getenv("DOMAIN_HEALTH_TIMEOUT_SECONDS",
 # Evidence-based AI incident explanations. Disabled by default so core DNS detection
 # and recovery never depend on an external AI provider.
 AI_PROVIDER = os.getenv("AI_PROVIDER", "disabled").strip().lower()
-AI_MODEL = os.getenv("AI_MODEL", "gpt-5.6-luna").strip()
+AI_MODEL = os.getenv("AI_MODEL", "gpt-5-mini").strip()
 AI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 AI_API_BASE_URL = os.getenv("AI_API_BASE_URL", "https://api.openai.com/v1").strip().rstrip("/")
 AI_TIMEOUT_SECONDS = float(os.getenv("AI_TIMEOUT_SECONDS", "15"))
