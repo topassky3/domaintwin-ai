@@ -8,6 +8,8 @@ Built for the **DevNetwork [API + Cloud + AI] Hackathon 2026**, targeting the **
 
 ## Core product story
 
+**Detect → Explain → Restore → Prove.**
+
 ```text
 Healthy
 → known-good snapshot
