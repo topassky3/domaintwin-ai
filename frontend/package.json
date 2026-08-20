@@ -8,7 +8,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "gate7:contract": "node scripts/gate7-contract.mjs",
-    "gate8:contract": "node scripts/gate8-contract.mjs"
+    "gate8:contract": "node scripts/gate8-contract.mjs",
+    "gate9:contract": "node scripts/gate9-contract.mjs"
   },
   "dependencies": {
     "next": "latest",
