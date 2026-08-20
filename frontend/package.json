@@ -10,7 +10,8 @@
     "gate7:contract": "node scripts/gate7-contract.mjs",
     "gate8:contract": "node scripts/gate8-contract.mjs",
     "gate9:contract": "node scripts/gate9-contract.mjs",
-    "gate10:contract": "node scripts/gate10-contract.mjs"
+    "gate10:contract": "node scripts/gate10-contract.mjs",
+    "gate11:contract": "node scripts/gate11-contract.mjs"
   },
   "dependencies": {
     "next": "latest",
