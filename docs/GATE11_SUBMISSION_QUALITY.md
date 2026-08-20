@@ -11,7 +11,7 @@ Gate 11 does not add risky product scope. It makes the existing working product 
 - [x] Backend and frontend verification commands are present.
 - [x] Demo routes and safety procedure are present.
 - [x] No secrets are required in committed files.
-- [ ] Clean-clone setup is executed once on a fresh directory or machine.
+- [x] Clean-clone setup was executed from a fresh directory: backend install/migrations/check, 90/90 core tests, Gate 7/8/9/10/11 contracts, TypeScript and production build all passed; generated artifacts were cleaned and the clone returned to a clean tree.
 
 ## Devpost acceptance
 
@@ -20,7 +20,7 @@ Gate 11 does not add risky product scope. It makes the existing working product 
 - [x] name.com integration mapped endpoint-by-endpoint.
 - [x] Build-progress story prepared.
 - [x] Startup feasibility explained without claiming validated traction/pricing.
-- [ ] Real screenshots captured and selected.
+- [x] Minimum strong real screenshot set captured and visually reviewed: CRITICAL incident, recovery PREVIEW, RECOVERED/MATCH YES, emergency SEARCH/CHECK, and emergency READY/MATCH YES.
 - [ ] Final Devpost fields copied into the submission form and reviewed.
 
 ## Demo video acceptance
@@ -31,8 +31,8 @@ Target: approximately 3 minutes unless the official challenge page requires a di
 - [x] Live-product-first structure prepared.
 - [x] name.com actions called out visibly.
 - [x] Narration emphasizes value rather than implementation trivia.
-- [ ] Core recovery succeeds three consecutive rehearsals.
-- [ ] Emergency flow succeeds three consecutive rehearsals.
+- [x] Core recovery succeeded three consecutive controlled rehearsals with safe reset after each run.
+- [x] Emergency flow succeeded three consecutive controlled rehearsals with a fresh sandbox target per run and safe reset after each run.
 - [ ] Final recording completed.
 - [ ] Final recording watched once with sound off for visual comprehension.
 - [ ] Final recording watched once audio-only for narration comprehension.
@@ -41,7 +41,17 @@ Target: approximately 3 minutes unless the official challenge page requires a di
 
 Required real captures are defined in `GATE11_SCREENSHOTS.md`.
 
+The minimum strong set has been captured from the real name.com-backed sandbox product and reviewed for readability. Screenshots are intended for the Devpost submission; they must not expose credentials, `.env` content, terminals containing tokens, or browser developer tools with Authorization material.
+
 Do not substitute mockups for the real name.com-backed product where a real state exists.
+
+## Rehearsal evidence summary
+
+- Core recovery R1/R2/R3: PASS.
+- Emergency continuity R1/R2/R3: PASS.
+- Known-good DNS fingerprint used for verification: `a3b35ae6406fccc24e82a5a9f3524826c5c4c88ce61ef881292837d1dad54313`.
+- Controlled recovery-preview capture used a real sandbox drift, then completed recovery and returned the runtime to safe flags.
+- No production mutation was enabled during Gate 11 evidence capture.
 
 ## Security acceptance
 
@@ -73,6 +83,8 @@ Gate 11 is complete only when all are true:
 8. Emergency-domain flow has three consecutive successful rehearsals.
 9. Devpost copy is final.
 10. Demo video is final and understandable without the README.
+
+Items 6–8 are now satisfied. Items 1–5 must be re-run once more after the final Gate 11 documentation state is synced. Items 9–10 remain open until the Devpost form and final video are complete.
 
 ## Freeze boundary
 
