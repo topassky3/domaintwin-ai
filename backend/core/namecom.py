@@ -33,6 +33,7 @@ class NameComClient:
         self.timeout = settings.NAMECOM_TIMEOUT_SECONDS
         self.allow_mutations = settings.NAMECOM_ALLOW_MUTATIONS
         self.allow_production_mutations = settings.NAMECOM_ALLOW_PRODUCTION_MUTATIONS
+        self.allow_domain_registration = settings.NAMECOM_ALLOW_DOMAIN_REGISTRATION
 
         if self.environment not in self.BASE_URLS:
             raise ValueError("NAMECOM_ENVIRONMENT must be 'sandbox' or 'production'.")
@@ -62,6 +63,19 @@ class NameComClient:
                 message="Production name.com mutations require explicit opt-in.",
             )
 
+    def _ensure_registration_allowed(self) -> None:
+        self._ensure_mutation_allowed()
+        if self.environment != "sandbox":
+            raise NameComAPIError(
+                status_code=403,
+                message="Gate 8 domain registration is sandbox-only.",
+            )
+        if not self.allow_domain_registration:
+            raise NameComAPIError(
+                status_code=403,
+                message="Sandbox domain registration is disabled by DomainTwin configuration.",
+            )
+
     def _request(
         self,
         method: str,
@@ -69,8 +83,12 @@ class NameComClient:
         payload: dict[str, Any] | None = None,
         *,
         mutation: bool = False,
+        registration: bool = False,
+        extra_headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        if mutation:
+        if registration:
+            self._ensure_registration_allowed()
+        elif mutation:
             self._ensure_mutation_allowed()
 
         body = None
@@ -79,6 +97,8 @@ class NameComClient:
             "Accept": "application/json",
             "User-Agent": "DomainTwinAI/0.1",
         }
+        if extra_headers:
+            headers.update(extra_headers)
         if payload is not None:
             body = json.dumps(payload).encode("utf-8")
             headers["Content-Type"] = "application/json"
@@ -131,6 +151,48 @@ class NameComClient:
 
     def get_domain(self, domain_name: str) -> dict[str, Any]:
         return self._request("GET", f"/core/v1/domains/{domain_name}")
+
+    def search_domains(
+        self,
+        *,
+        keyword: str,
+        tld_filter: list[str] | None = None,
+        timeout_ms: int = 2500,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "keyword": keyword,
+            "timeout": timeout_ms,
+            "purchaseType": "registration",
+        }
+        if tld_filter:
+            payload["tldFilter"] = tld_filter
+        return self._request("POST", "/core/v1/domains:search", payload)
+
+    def check_availability(self, domain_names: list[str]) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            "/core/v1/domains:checkAvailability",
+            {
+                "domainNames": domain_names,
+                "purchaseType": "registration",
+            },
+        )
+
+    def create_domain(
+        self,
+        payload: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        if not idempotency_key.strip():
+            raise ValueError("An idempotency key is required for domain registration.")
+        return self._request(
+            "POST",
+            "/core/v1/domains",
+            payload,
+            registration=True,
+            extra_headers={"X-Idempotency-Key": idempotency_key},
+        )
 
     def list_records(self, domain_name: str) -> dict[str, Any]:
         return self._request("GET", f"/core/v1/domains/{domain_name}/records")

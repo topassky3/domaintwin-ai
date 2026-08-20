@@ -213,6 +213,82 @@ export interface AIAnalysis {
   };
 }
 
+export interface EmergencyStatus {
+  provider: string;
+  environment: Environment;
+  sandboxOnly: boolean;
+  dnsMutationsEnabled: boolean;
+  registrationEnabled: boolean;
+  productionRegistrationSupported: boolean;
+}
+
+export interface EmergencySearchResult {
+  domainName: string;
+  purchasable: boolean;
+  sld?: string | null;
+  tld?: string | null;
+  premium: boolean;
+  purchasePrice?: number | null;
+  renewalPrice?: number | null;
+  purchaseType: string;
+  reason?: string;
+  gate8Supported: boolean;
+}
+
+export interface EmergencySearchResponse {
+  environment: Environment;
+  purchaseType: string;
+  results: EmergencySearchResult[];
+}
+
+export interface EmergencyAuditEvent {
+  sequence: number;
+  eventType: string;
+  payload?: Record<string, unknown>;
+  occurredAt: string;
+}
+
+export interface EmergencyDomainPlan {
+  id: number;
+  status: "PREVIEW" | "APPROVED" | "APPLYING" | "READY" | "PARTIAL" | "FAILED" | "STALE" | string;
+  sourceDomain: string;
+  targetDomain: string;
+  baselineSnapshotId: number;
+  baselineVersion: number;
+  availability: EmergencySearchResult;
+  registration: {
+    domainName?: string;
+    createDate?: string | null;
+    expireDate?: string | null;
+    autorenewEnabled?: boolean | null;
+    locked?: boolean | null;
+    privacyEnabled?: boolean | null;
+    order?: number | null;
+    totalPaid?: number | null;
+  };
+  expectedFingerprint: string;
+  actualFingerprint?: string | null;
+  planFingerprint: string;
+  operationCount: number;
+  operations: RecoveryOperation[];
+  operationResults: Array<Record<string, unknown>>;
+  verification: {
+    matched?: boolean;
+    expectedFingerprint?: string;
+    actualFingerprint?: string;
+    recordCount?: number;
+    error?: string;
+  };
+  requiresApproval: boolean;
+  canApply: boolean;
+  approvedAt?: string | null;
+  appliedAt?: string | null;
+  verifiedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  audit?: EmergencyAuditEvent[];
+}
+
 export function domainNameOf(domain: DomainSummary): string {
   return String(domain.domainName ?? domain.domain ?? domain.name ?? "");
 }

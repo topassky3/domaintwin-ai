@@ -1,6 +1,15 @@
 from django.urls import path
 
 from .ai_views import incident_explanation
+from .emergency_views import (
+    emergency_check,
+    emergency_plan_apply,
+    emergency_plan_approve,
+    emergency_plan_detail,
+    emergency_plans,
+    emergency_search,
+    emergency_status,
+)
 from .monitor_views import (
     domain_health,
     domain_incidents,
@@ -110,5 +119,28 @@ urlpatterns = [
         "recovery/plans/<int:plan_id>/apply/",
         recovery_plan_apply,
         name="recovery-plan-apply",
+    ),
+    path("emergency/status/", emergency_status, name="emergency-status"),
+    path("emergency/search/", emergency_search, name="emergency-search"),
+    path("emergency/check/", emergency_check, name="emergency-check"),
+    path(
+        "emergency/domains/<str:source_domain>/plans/",
+        emergency_plans,
+        name="emergency-plans",
+    ),
+    path(
+        "emergency/plans/<int:plan_id>/",
+        emergency_plan_detail,
+        name="emergency-plan-detail",
+    ),
+    path(
+        "emergency/plans/<int:plan_id>/approve/",
+        emergency_plan_approve,
+        name="emergency-plan-approve",
+    ),
+    path(
+        "emergency/plans/<int:plan_id>/apply/",
+        emergency_plan_apply,
+        name="emergency-plan-apply",
     ),
 ]

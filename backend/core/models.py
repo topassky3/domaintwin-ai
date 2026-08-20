@@ -193,3 +193,61 @@ class IncidentExplanation(models.Model):
                 name="unique_incident_ai_explanation",
             )
         ]
+
+
+class EmergencyDomainPlan(models.Model):
+    class Status(models.TextChoices):
+        PREVIEW = "PREVIEW", "Preview"
+        APPROVED = "APPROVED", "Approved"
+        APPLYING = "APPLYING", "Applying"
+        READY = "READY", "Emergency domain ready"
+        PARTIAL = "PARTIAL", "Partial clone"
+        FAILED = "FAILED", "Failed"
+        STALE = "STALE", "Availability changed"
+
+    source_domain_name = models.CharField(max_length=253, db_index=True)
+    target_domain_name = models.CharField(max_length=253, db_index=True)
+    baseline_snapshot = models.ForeignKey(
+        DomainSnapshot,
+        on_delete=models.PROTECT,
+        related_name="emergency_domain_plans",
+    )
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PREVIEW)
+    availability = models.JSONField(default=dict)
+    registration = models.JSONField(default=dict)
+    expected_fingerprint = models.CharField(max_length=64)
+    actual_fingerprint = models.CharField(max_length=64, blank=True)
+    plan_fingerprint = models.CharField(max_length=64, db_index=True)
+    idempotency_key = models.CharField(max_length=64, unique=True)
+    operations = models.JSONField(default=list)
+    operation_results = models.JSONField(default=list)
+    verification = models.JSONField(default=dict)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+
+class EmergencyDomainAuditEvent(models.Model):
+    plan = models.ForeignKey(
+        EmergencyDomainPlan,
+        on_delete=models.CASCADE,
+        related_name="audit_events",
+    )
+    sequence = models.PositiveIntegerField()
+    event_type = models.CharField(max_length=64)
+    payload = models.JSONField(default=dict)
+    occurred_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["sequence", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["plan", "sequence"],
+                name="unique_emergency_domain_audit_sequence",
+            )
+        ]
