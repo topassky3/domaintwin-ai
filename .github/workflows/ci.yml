@@ -1,0 +1,112 @@
+name: DomainTwin CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: domaintwin-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend safety + regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DJANGO_SECRET_KEY: ci-only-not-a-production-secret
+      DJANGO_DEBUG: "0"
+      DJANGO_ALLOWED_HOSTS: 127.0.0.1,localhost
+      NAMECOM_ENVIRONMENT: sandbox
+      NAMECOM_USERNAME: ci-user
+      NAMECOM_API_TOKEN: ci-not-a-real-token
+      NAMECOM_TIMEOUT_SECONDS: "1"
+      NAMECOM_ALLOW_MUTATIONS: "0"
+      NAMECOM_ALLOW_PRODUCTION_MUTATIONS: "0"
+      NAMECOM_ALLOW_DOMAIN_REGISTRATION: "0"
+      DOMAIN_HEALTH_TIMEOUT_SECONDS: "1"
+      AI_PROVIDER: disabled
+      OPENAI_API_KEY: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Migration drift check
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Django system check
+        run: python manage.py check
+
+      - name: Backend regression
+        run: python manage.py test core
+
+  frontend:
+    name: Frontend contracts + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      API_BASE_URL: http://127.0.0.1:8000
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install exact frontend dependency tree
+        run: npm ci
+
+      - name: Gate 7 contract
+        run: npm run gate7:contract
+
+      - name: Gate 8 contract
+        run: npm run gate8:contract
+
+      - name: Gate 9 contract
+        run: npm run gate9:contract
+
+      - name: Gate 10 contract
+        run: npm run gate10:contract
+
+      - name: Gate 11 contract
+        run: npm run gate11:contract
+
+      - name: P1 CI contract
+        run: npm run p1:contract
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Production build
+        run: npm run build
