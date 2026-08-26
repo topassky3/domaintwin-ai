@@ -1,4 +1,4 @@
-# DomainTwin AI — Devpost Submission Draft
+# DomainTwin AI — Devpost Submission Candidate
 
 ## Project name
 
@@ -183,10 +183,9 @@ The difficult domain-specific core already works. The remaining commercial work 
 
 DomainTwin demonstrates deep API usage across reads, DNS mutations, search, availability, registration and verification, with name.com structurally required for both demo flows.
 
-## Links to prepare before submission
+## Final submission links
 
 - Repository: `https://github.com/topassky3/domaintwin-ai`
-- Demo video: **ADD FINAL VIDEO URL**
-- Live demo (if deployed): **ADD FINAL LIVE URL OR OMIT**
+- Demo video: `https://youtu.be/6PZ8M8ZfGcc`
 
-Do not submit placeholders. Remove any link row that is not available before final Devpost submission.
+A public live deployment is intentionally omitted from the hackathon submission; the working product is demonstrated through the recorded local/sandbox flow and public repository.
