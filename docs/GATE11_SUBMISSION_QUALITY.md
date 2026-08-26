@@ -21,7 +21,8 @@ Gate 11 does not add risky product scope. It makes the existing working product 
 - [x] Build-progress story prepared.
 - [x] Startup feasibility explained without claiming validated traction/pricing.
 - [x] Minimum strong real screenshot set captured and visually reviewed: CRITICAL incident, recovery PREVIEW, RECOVERED/MATCH YES, emergency SEARCH/CHECK, and emergency READY/MATCH YES.
-- [ ] Final Devpost fields copied into the submission form and reviewed.
+- [x] Final demo-video URL synced into `DEVPOST_SUBMISSION.md`.
+- [ ] Final Devpost fields reviewed immediately before submission, including sponsor selection and downloadable MP4 backup link.
 
 ## Demo video acceptance
 
@@ -33,7 +34,7 @@ Target: approximately 3 minutes unless the official challenge page requires a di
 - [x] Narration emphasizes value rather than implementation trivia.
 - [x] Core recovery succeeded three consecutive controlled rehearsals with safe reset after each run.
 - [x] Emergency flow succeeded three consecutive controlled rehearsals with a fresh sandbox target per run and safe reset after each run.
-- [ ] Final recording completed.
+- [x] Final recording completed and uploaded as an unlisted video: `https://youtu.be/6PZ8M8ZfGcc`.
 - [ ] Final recording watched once with sound off for visual comprehension.
 - [ ] Final recording watched once audio-only for narration comprehension.
 
@@ -69,6 +70,26 @@ Mutation/registration may be armed only for the exact controlled step and must b
 
 Never perform production mutation for Gate 11.
 
+## H0 — Finish Hackathon closeout
+
+H0 is intentionally documentation-and-verification only. No new product feature or risky refactor belongs in this closeout.
+
+Close H0 in this order:
+
+1. synchronize the local Gate 11 branch with the final remote documentation commit;
+2. verify safe runtime flags;
+3. run Django migration drift check and Django system check;
+4. run the full 90-test backend core regression;
+5. run Gate 7/8/9/10/11 contracts;
+6. run TypeScript and the production Next.js build;
+7. remove generated frontend artifacts if the checks modify tracked/generated files;
+8. run `git diff --check` and prove a clean working tree;
+9. prove local HEAD equals remote Gate 11 HEAD;
+10. review the final video once with sound off and once audio-only;
+11. review every Devpost field, sponsor selection, YouTube demo URL and downloadable MP4 backup link;
+12. only after all checks pass, mark PR #14 ready for review and merge it to `main`;
+13. enter Gate 12 Freeze: no new features, blocker fixes only.
+
 ## Final Gate 11 closure criteria
 
 Gate 11 is complete only when all are true:
@@ -84,7 +105,7 @@ Gate 11 is complete only when all are true:
 9. Devpost copy is final.
 10. Demo video is final and understandable without the README.
 
-Items 6–8 are now satisfied. Items 1–5 must be re-run once more after the final Gate 11 documentation state is synced. Items 9–10 remain open until the Devpost form and final video are complete.
+Items 6–8 and final recording are satisfied. Items 1–5 must be re-run once more against the final H0 documentation state. Item 9 requires the final Devpost form review. Item 10 requires the two final playback reviews.
 
 ## Freeze boundary
 
