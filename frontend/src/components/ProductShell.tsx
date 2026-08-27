@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useMemo, useState } from "react";
+import type { AuthUser } from "@/lib/auth";
+import { signOut } from "@/lib/auth";
 import { api, DomainsResponse, domainNameOf, NameComStatus } from "@/lib/domaintwin";
 
 const nav = [
@@ -13,13 +15,15 @@ const nav = [
   ["ED", "Emergency", "/app/emergency"],
 ] as const;
 
-export function ProductShell({ children }: { children: ReactNode }) {
+export function ProductShell({ children, user }: { children: ReactNode; user: AuthUser }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [provider, setProvider] = useState<NameComStatus | null>(null);
   const [providerError, setProviderError] = useState<string | null>(null);
   const [domains, setDomains] = useState<string[]>([]);
   const [domainsReachable, setDomainsReachable] = useState(false);
   const [fallbackEnvironment, setFallbackEnvironment] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,6 +98,17 @@ export function ProductShell({ children }: { children: ReactNode }) {
         ? "Provider status unavailable"
         : "Checking provider…";
 
+  async function handleSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await signOut();
+    } finally {
+      router.replace("/login");
+      router.refresh();
+    }
+  }
+
   return (
     <div className="product-root">
       <aside className="product-sidebar">
@@ -151,10 +166,16 @@ export function ProductShell({ children }: { children: ReactNode }) {
           </div>
           <div className="product-topbar-actions">
             <span className={`product-env product-env--large ${environmentClass}`}>{environment}</span>
+            <span className="product-connection is-online" title={`Capabilities: ${user.capabilities.join(", ")}`}>
+              <i /> {user.role} · {user.username}
+            </span>
             <span className={providerReachable ? "product-connection is-online" : "product-connection"}>
               <i /> {connectionLabel}
             </span>
             <Link className="button button--secondary" href="/demo">Public demo</Link>
+            <button className="button button--secondary" type="button" onClick={() => void handleSignOut()} disabled={signingOut}>
+              {signingOut ? "Signing out…" : "Sign out"}
+            </button>
           </div>
         </header>
         <main className="product-content">{children}</main>

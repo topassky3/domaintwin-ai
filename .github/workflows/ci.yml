@@ -112,6 +112,9 @@ jobs:
       - name: P1 CI contract
         run: npm run p1:contract
 
+      - name: P2 auth contract
+        run: npm run p2:contract
+
       - name: TypeScript
         run: npm run typecheck
 

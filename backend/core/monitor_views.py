@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from .health import UnsafeHealthTarget, check_domain_health
@@ -19,7 +18,7 @@ from .twin import diff_records, normalize_records, snapshot_fingerprint
 
 def _cors(response: JsonResponse) -> JsonResponse:
     response["Access-Control-Allow-Origin"] = "http://localhost:3000"
-    response["Access-Control-Allow-Headers"] = "Content-Type"
+    response["Access-Control-Allow-Headers"] = "Content-Type,X-CSRFToken"
     response["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return response
 
@@ -110,7 +109,6 @@ def domain_health(request, domain_name: str):
         return _error_response(exc)
 
 
-@csrf_exempt
 @require_http_methods(["POST", "OPTIONS"])
 def evaluate_domain(request, domain_name: str):
     if request.method == "OPTIONS":

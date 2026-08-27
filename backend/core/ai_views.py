@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from .ai import build_evidence_bundle, generate_incident_explanation, resolve_evidence
@@ -11,7 +10,7 @@ from .models import Incident, IncidentExplanation
 
 def _cors(response: JsonResponse) -> JsonResponse:
     response["Access-Control-Allow-Origin"] = "http://localhost:3000"
-    response["Access-Control-Allow-Headers"] = "Content-Type"
+    response["Access-Control-Allow-Headers"] = "Content-Type,X-CSRFToken"
     response["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return response
 
@@ -50,7 +49,6 @@ def _serialize(explanation: IncidentExplanation, *, cached: bool) -> dict:
     }
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def incident_explanation(request, incident_id: int):
     if request.method == "OPTIONS":

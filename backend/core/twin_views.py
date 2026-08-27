@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from .models import DomainSnapshot, KnownGoodSnapshot
@@ -12,7 +11,7 @@ from .twin import create_snapshot, diff_records, mark_known_good, normalize_reco
 
 def _cors(response: JsonResponse) -> JsonResponse:
     response["Access-Control-Allow-Origin"] = "http://localhost:3000"
-    response["Access-Control-Allow-Headers"] = "Content-Type"
+    response["Access-Control-Allow-Headers"] = "Content-Type,X-CSRFToken"
     response["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return response
 
@@ -58,7 +57,6 @@ def _live_records(domain_name: str) -> list[dict]:
     return records
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def snapshots(request, domain_name: str):
     if request.method == "OPTIONS":
@@ -106,7 +104,6 @@ def snapshot_detail(request, domain_name: str, snapshot_id: int):
     )
 
 
-@csrf_exempt
 @require_http_methods(["POST", "OPTIONS"])
 def snapshot_known_good(request, domain_name: str, snapshot_id: int):
     if request.method == "OPTIONS":
