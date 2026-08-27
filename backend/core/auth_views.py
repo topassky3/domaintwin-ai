@@ -8,6 +8,8 @@ from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.http import require_http_methods
 
+from .rbac import authorization_for_user
+
 
 def _json(data: dict, status: int = 200) -> JsonResponse:
     response = JsonResponse(data, status=status)
@@ -34,6 +36,7 @@ def _serialize_user(user) -> dict:
         "email": user.email,
         "isStaff": bool(user.is_staff),
         "isSuperuser": bool(user.is_superuser),
+        **authorization_for_user(user),
     }
 
 
