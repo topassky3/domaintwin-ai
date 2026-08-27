@@ -6,12 +6,14 @@ P1 turns the frozen hackathon build into a safer engineering baseline without ch
 
 P1-A adds automatic CI for every pull request to `main` and every push to `main`.
 
-The CI must prove two independent surfaces:
+The CI proves two independent surfaces.
 
 ### Backend
 
 - Python 3.12
 - dependency installation from `backend/requirements.txt`
+- Python dependency-graph validation with `pip check`
+- exact verification of the pinned direct backend versions
 - `makemigrations --check --dry-run`
 - Django `check`
 - complete `core` regression suite
@@ -57,7 +59,7 @@ not `npm install`.
 
 The committed `package-lock.json` is the dependency-tree authority for CI.
 
-P1-B also pins every direct frontend dependency in `package.json` to the exact version already resolved by the proven lockfile. It does not upgrade packages. The verified versions are:
+P1-B pins every direct frontend dependency in `package.json` to the exact version already resolved by the proven lockfile. It does not upgrade packages. The verified versions are:
 
 ```text
 next              16.3.1
@@ -69,9 +71,16 @@ react-dom         19.2.8
 typescript        7.0.2
 ```
 
-The P1 contract rejects `latest` and other non-exact direct dependency specifications and verifies that every pinned direct dependency resolves to the same version in `package-lock.json`.
+The P1 contract rejects `latest` and other non-exact direct frontend dependency specifications and verifies that every pinned direct dependency resolves to the same version in `package-lock.json`.
 
-Python dependencies remain bounded by `requirements.txt` during P1-A/P1-B. Exact Python locking is a separate checkpoint so frontend pinning and Python packaging policy are not mixed into one change.
+P1-C pins the direct Python runtime dependencies to the exact versions already proven by GitHub Actions:
+
+```text
+Django==5.2.17
+python-dotenv==1.2.3
+```
+
+The CI additionally runs `python -m pip check` and verifies the installed package metadata before Django checks/tests. This checkpoint intentionally pins the direct runtime contract without introducing a new Python packaging tool or changing application behavior.
 
 ## Generated artifacts
 
@@ -110,6 +119,21 @@ P1-B passes only when all of the following are true:
 9. No DomainTwin recovery, incident, risk, emergency or AI decision logic is modified.
 10. local working tree is clean after generated artifact cleanup.
 
+## P1-C acceptance criteria
+
+P1-C passes only when all of the following are true:
+
+1. `backend/requirements.txt` uses exact direct dependency pins.
+2. Django is pinned to `5.2.17`, the version already proven by CI.
+3. python-dotenv is pinned to `1.2.3`, the version already proven by CI.
+4. `python -m pip check` reports no broken dependency relationships.
+5. CI verifies the installed Django and python-dotenv versions before running application checks.
+6. `makemigrations --check --dry-run` remains clean.
+7. Django `check` remains clean.
+8. all 90 `core` tests still pass.
+9. frontend contracts/typecheck/build remain green in CI.
+10. no DomainTwin recovery, incident, risk, emergency or AI decision logic is modified.
+
 ## Local verification — Windows PowerShell
 
 From the repository root:
@@ -122,17 +146,20 @@ git switch agent/p1-engineering-baseline
 git pull --ff-only origin agent/p1-engineering-baseline
 ```
 
-Backend regression, when requested:
+Backend P1-C:
 
 ```powershell
 cd backend
 .\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python -m pip check
+python -c "import importlib.metadata as m; print('Django=', m.version('Django')); print('python-dotenv=', m.version('python-dotenv'))"
 python manage.py makemigrations --check --dry-run
 python manage.py check
 python manage.py test core
 ```
 
-Frontend:
+Frontend, when requested:
 
 ```powershell
 cd ..\frontend
@@ -158,7 +185,13 @@ git rev-parse HEAD
 git rev-parse origin/agent/p1-engineering-baseline
 ```
 
-## Out of scope for P1-A / P1-B
+## Remaining P1 work
+
+P1-D will remove the GitHub Actions Node-runtime deprecation warnings by moving the workflow actions to supported major versions after checking their current releases.
+
+P1-E will apply repository protection policy to `main` using the successful CI checks as the merge gate. That step includes explicit GitHub web-page instructions because repository rules are account/repository settings rather than application code.
+
+## Out of scope for P1
 
 - authentication
 - RBAC
@@ -169,6 +202,5 @@ git rev-parse origin/agent/p1-engineering-baseline
 - production deployment
 - billing
 - recovery-engine refactors
-- Python dependency lock policy
 
-Those remain later productization checkpoints. P1 changes the engineering safety net and reproducibility, not the product behavior.
+Those remain later productization phases. P1 changes the engineering safety net and reproducibility, not the product behavior.
