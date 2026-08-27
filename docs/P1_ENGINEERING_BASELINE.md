@@ -57,7 +57,21 @@ not `npm install`.
 
 The committed `package-lock.json` is the dependency-tree authority for CI.
 
-Python dependencies remain bounded by `requirements.txt` during P1-A. Exact Python locking is evaluated separately in P1-B so CI establishment and dependency-policy changes are not mixed in one checkpoint.
+P1-B also pins every direct frontend dependency in `package.json` to the exact version already resolved by the proven lockfile. It does not upgrade packages. The verified versions are:
+
+```text
+next              16.3.1
+react             19.2.8
+react-dom         19.2.8
+@types/node       26.2.0
+@types/react      19.2.18
+@types/react-dom  19.2.4
+typescript        7.0.2
+```
+
+The P1 contract rejects `latest` and other non-exact direct dependency specifications and verifies that every pinned direct dependency resolves to the same version in `package-lock.json`.
+
+Python dependencies remain bounded by `requirements.txt` during P1-A/P1-B. Exact Python locking is a separate checkpoint so frontend pinning and Python packaging policy are not mixed into one change.
 
 ## Generated artifacts
 
@@ -81,6 +95,21 @@ P1-A passes only when all of the following are true:
 10. local working tree is clean after generated artifact cleanup.
 11. GitHub Actions reports both backend and frontend jobs successful on the P1 pull request.
 
+## P1-B acceptance criteria
+
+P1-B passes only when all of the following are true:
+
+1. `frontend/package.json` contains no `latest` direct dependency specifications.
+2. Every direct frontend dependency is pinned to an exact version.
+3. Each pinned version exactly matches the version already resolved in `package-lock.json`.
+4. `npm ci` succeeds without changing the dependency tree.
+5. Gate 7/8/9/10/11 and P1 contracts still pass.
+6. TypeScript still passes.
+7. Next.js production build still passes.
+8. GitHub Actions backend and frontend jobs remain successful.
+9. No DomainTwin recovery, incident, risk, emergency or AI decision logic is modified.
+10. local working tree is clean after generated artifact cleanup.
+
 ## Local verification — Windows PowerShell
 
 From the repository root:
@@ -93,7 +122,7 @@ git switch agent/p1-engineering-baseline
 git pull --ff-only origin agent/p1-engineering-baseline
 ```
 
-Backend:
+Backend regression, when requested:
 
 ```powershell
 cd backend
@@ -129,7 +158,7 @@ git rev-parse HEAD
 git rev-parse origin/agent/p1-engineering-baseline
 ```
 
-## Out of scope for P1-A
+## Out of scope for P1-A / P1-B
 
 - authentication
 - RBAC
@@ -140,5 +169,6 @@ git rev-parse origin/agent/p1-engineering-baseline
 - production deployment
 - billing
 - recovery-engine refactors
+- Python dependency lock policy
 
-Those remain later productization phases. P1-A changes the engineering safety net, not the product behavior.
+Those remain later productization checkpoints. P1 changes the engineering safety net and reproducibility, not the product behavior.
