@@ -4,7 +4,11 @@ import path from "node:path";
 const root = process.cwd();
 const repoRoot = path.resolve(root, "..");
 
-const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
+// Git may materialize text files as CRLF on Windows and LF in CI/Linux. Static
+// contract assertions must validate source semantics rather than checkout EOL style.
+const read = (relativePath) => fs
+  .readFileSync(path.join(repoRoot, relativePath), "utf8")
+  .replace(/\r\n/g, "\n");
 
 const authViews = read("backend/core/auth_views.py");
 const authTests = read("backend/core/test_auth.py");
