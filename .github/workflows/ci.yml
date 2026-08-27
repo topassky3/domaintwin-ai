@@ -58,7 +58,7 @@ jobs:
 
       - name: Verify pinned backend versions
         run: |
-          python -c "import django, dotenv; assert django.get_version() == '5.2.17'; assert dotenv.version.__version__ == '1.2.3'; print('Backend dependency pins verified')"
+          python -c "import importlib.metadata as m; assert m.version('Django') == '5.2.17'; assert m.version('python-dotenv') == '1.2.3'; print('Backend dependency pins verified')"
 
       - name: Migration drift check
         run: python manage.py makemigrations --check --dry-run
