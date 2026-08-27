@@ -24,7 +24,7 @@ The CI proves two independent surfaces.
 
 ### Frontend
 
-- Node.js 20
+- Node.js 20 application runtime
 - exact install from the committed lockfile using `npm ci`
 - Gate 7/8/9/10/11 contracts
 - P1 CI contract
@@ -82,6 +82,25 @@ python-dotenv==1.2.3
 
 The CI additionally runs `python -m pip check` and verifies the installed package metadata before Django checks/tests. This checkpoint intentionally pins the direct runtime contract without introducing a new Python packaging tool or changing application behavior.
 
+## GitHub Actions runtime hardening
+
+P1-D removes the Node-runtime deprecation warnings emitted by the older official GitHub Actions. The action releases were checked before the update and their release commits are pinned directly in the workflow:
+
+```text
+actions/checkout v7.0.1
+  3d3c42e5aac5ba805825da76410c181273ba90b1
+
+actions/setup-python v7.0.0
+  5fda3b95a4ea91299a34e894583c3862153e4b97
+
+actions/setup-node v7.0.0
+  820762786026740c76f36085b0efc47a31fe5020
+```
+
+Those releases use Node 24 internally. The explicit `node-version: "20"` in the frontend job is a separate concern: it remains the application/runtime version used to build DomainTwin and is not the deprecated internal runtime of the GitHub Actions themselves.
+
+Pinning the action commits also prevents an action tag from silently changing the code executed by CI.
+
 ## Generated artifacts
 
 `*.tsbuildinfo` is a local TypeScript cache artifact and must not appear as an untracked repository change after type checking.
@@ -134,6 +153,21 @@ P1-C passes only when all of the following are true:
 9. frontend contracts/typecheck/build remain green in CI.
 10. no DomainTwin recovery, incident, risk, emergency or AI decision logic is modified.
 
+## P1-D acceptance criteria
+
+P1-D passes only when all of the following are true:
+
+1. checkout is pinned to the verified `v7.0.1` commit.
+2. setup-python is pinned to the verified `v7.0.0` commit.
+3. setup-node is pinned to the verified `v7.0.0` commit.
+4. the P1 contract rejects the old checkout/setup action references.
+5. GitHub Actions completes backend and frontend jobs successfully.
+6. the prior Node 20 action-runtime deprecation warning is absent from the new run logs.
+7. application Node.js remains explicitly controlled for the DomainTwin frontend build.
+8. the local P1 contract passes after syncing the branch.
+9. the local tree is clean and local HEAD equals the remote branch HEAD.
+10. no DomainTwin product logic is changed.
+
 ## Local verification — Windows PowerShell
 
 From the repository root:
@@ -159,7 +193,7 @@ python manage.py check
 python manage.py test core
 ```
 
-Frontend, when requested:
+Frontend/P1 contract:
 
 ```powershell
 cd ..\frontend
@@ -174,10 +208,11 @@ npm run typecheck
 npm run build
 ```
 
-Cleanup and repository proof:
+P1-D can be locally checked without another full application regression after CI is green:
 
 ```powershell
-git restore next-env.d.ts
+cd frontend
+npm run p1:contract
 cd ..
 git diff --check
 git status --short
@@ -185,11 +220,15 @@ git rev-parse HEAD
 git rev-parse origin/agent/p1-engineering-baseline
 ```
 
+Cleanup after a frontend build, if needed:
+
+```powershell
+git restore frontend/next-env.d.ts
+```
+
 ## Remaining P1 work
 
-P1-D will remove the GitHub Actions Node-runtime deprecation warnings by moving the workflow actions to supported major versions after checking their current releases.
-
-P1-E will apply repository protection policy to `main` using the successful CI checks as the merge gate. That step includes explicit GitHub web-page instructions because repository rules are account/repository settings rather than application code.
+P1-E applies repository protection policy to `main` using the successful CI checks as the merge gate. That step includes explicit GitHub web-page instructions because repository rules are account/repository settings rather than application code.
 
 ## Out of scope for P1
 
