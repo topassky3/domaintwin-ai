@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from django.conf import settings
+from django.db.models import F
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_http_methods
@@ -18,9 +19,14 @@ from .emergency import (
     create_emergency_plan,
     search_candidates,
 )
-from .models import EmergencyDomainPlan
+from .models import EmergencyDomainPlan, KnownGoodSnapshot
 from .namecom import NameComAPIError, NameComClient
-from .tenant import TenantContextError, tenant_error_response, tenant_scoped_queryset
+from .tenant import (
+    TenantContextError,
+    require_snapshot_domain,
+    tenant_error_response,
+    tenant_scoped_queryset,
+)
 
 
 def _cors(response: JsonResponse) -> JsonResponse:
@@ -109,10 +115,19 @@ def _serialize_plan(plan: EmergencyDomainPlan, *, include_audit: bool = True) ->
     return payload
 
 
+def _consistent_emergency_rows(queryset):
+    return queryset.filter(
+        baseline_snapshot__domain_name=F("source_domain_name")
+    )
+
+
 def _tenant_plan_rows(request):
+    rows = _consistent_emergency_rows(
+        EmergencyDomainPlan.objects.select_related("baseline_snapshot")
+    )
     return tenant_scoped_queryset(
         request,
-        EmergencyDomainPlan.objects.select_related("baseline_snapshot"),
+        rows,
         domain_lookups=("source_domain_name", "baseline_snapshot__domain_name"),
     )
 
@@ -184,8 +199,10 @@ def emergency_plans(request, source_domain: str):
         return _json({})
     try:
         if request.method == "GET":
-            rows = EmergencyDomainPlan.objects.filter(source_domain_name=source_domain).select_related(
-                "baseline_snapshot"
+            rows = _consistent_emergency_rows(
+                EmergencyDomainPlan.objects.filter(
+                    source_domain_name=source_domain
+                ).select_related("baseline_snapshot")
             )
             return _json(
                 {
@@ -194,6 +211,14 @@ def emergency_plans(request, source_domain: str):
                     "totalCount": rows.count(),
                 }
             )
+
+        marker = (
+            KnownGoodSnapshot.objects.select_related("snapshot")
+            .filter(domain_name=source_domain)
+            .first()
+        )
+        if marker is not None:
+            require_snapshot_domain(marker.snapshot, source_domain)
 
         payload = _parse_body(request)
         target_domain = str(payload.get("targetDomain") or "")

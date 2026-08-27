@@ -4,6 +4,7 @@ import uuid
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.db.models import F
 from django.http import Http404, JsonResponse
 
 from .models import ManagedDomain, Membership, canonical_domain_name
@@ -135,19 +136,32 @@ def managed_domain_for_request(request, domain_name: str) -> tuple[ManagedDomain
     return managed_domain, membership
 
 
+def require_snapshot_domain(snapshot, domain_name: str):
+    """Require a deterministic evidence snapshot to belong to the exact domain root."""
+    try:
+        expected = canonical_domain_name(domain_name)
+        actual = canonical_domain_name(getattr(snapshot, "domain_name", ""))
+    except ValueError as exc:
+        raise Http404("Resource not found.") from exc
+    if actual != expected:
+        raise Http404("Resource not found.")
+    return snapshot
+
+
 def tenant_scoped_queryset(request, queryset, *, domain_lookups: str | tuple[str, ...]):
     """Scope legacy/derived evidence through active ManagedDomain ownership.
 
     Historical evidence intentionally keeps its deterministic domain-name fields. P3-C
     therefore derives ownership from the canonical ManagedDomain registry instead of
     copying organization identifiers into fingerprinted evidence. Multiple lookups may
-    be supplied so a derived row and its baseline chain must agree on tenant ownership.
+    be supplied so every participating domain is tenant-owned. P3-E additionally
+    requires those lookup chains to resolve to the exact same domain, preventing a
+    corrupted same-tenant relationship from mixing evidence between domains.
     """
 
     # Historical deterministic endpoint tests intentionally bypass production auth/RBAC
-    # and the P3-B domain middleware under this explicit test-only setting. P3-C mirrors
-    # that behavior; production-style security suites disable the flag and exercise the
-    # full tenant boundary.
+    # and the P3-B domain middleware under this explicit test-only setting. Production-
+    # style P3 security suites disable the flag and exercise the full tenant boundary.
     if getattr(settings, "DOMAIN_TWIN_TESTING", False):
         return queryset
 
@@ -160,6 +174,11 @@ def tenant_scoped_queryset(request, queryset, *, domain_lookups: str | tuple[str
     scoped = queryset
     for lookup in lookups:
         scoped = scoped.filter(**{f"{lookup}__in": owned_names})
+
+    if len(lookups) > 1:
+        root_lookup = lookups[0]
+        for lookup in lookups[1:]:
+            scoped = scoped.filter(**{lookup: F(root_lookup)})
     return scoped
 
 

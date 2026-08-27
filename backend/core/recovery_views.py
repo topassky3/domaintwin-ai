@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from django.db.models import F, Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_http_methods
@@ -14,7 +15,12 @@ from .actor_audit import (
 from .models import Incident, KnownGoodSnapshot, RecoveryPlan
 from .namecom import NameComAPIError, NameComClient
 from .recovery import RecoveryError, create_recovery_plan
-from .tenant import TenantContextError, tenant_error_response, tenant_scoped_queryset
+from .tenant import (
+    TenantContextError,
+    require_snapshot_domain,
+    tenant_error_response,
+    tenant_scoped_queryset,
+)
 
 
 def _cors(response: JsonResponse) -> JsonResponse:
@@ -102,6 +108,18 @@ def _serialize_plan(plan: RecoveryPlan, *, include_audit: bool = True) -> dict:
     return payload
 
 
+def _consistent_recovery_rows(queryset):
+    return queryset.filter(
+        baseline_snapshot__domain_name=F("domain_name")
+    ).filter(
+        Q(incident__isnull=True)
+        | Q(
+            incident__domain_name=F("domain_name"),
+            incident__baseline_snapshot__domain_name=F("domain_name"),
+        )
+    )
+
+
 def _current_baseline_and_incident(domain_name: str):
     incident = (
         Incident.objects.filter(domain_name=domain_name, status=Incident.Status.OPEN)
@@ -109,18 +127,26 @@ def _current_baseline_and_incident(domain_name: str):
         .first()
     )
     if incident:
-        return incident.baseline_snapshot, incident
+        baseline = require_snapshot_domain(incident.baseline_snapshot, domain_name)
+        return baseline, incident
     marker = get_object_or_404(
         KnownGoodSnapshot.objects.select_related("snapshot"),
         domain_name=domain_name,
     )
-    return marker.snapshot, None
+    return require_snapshot_domain(marker.snapshot, domain_name), None
 
 
 def _tenant_plan_rows(request):
+    rows = _consistent_recovery_rows(
+        RecoveryPlan.objects.select_related(
+            "baseline_snapshot",
+            "incident",
+            "incident__baseline_snapshot",
+        )
+    )
     return tenant_scoped_queryset(
         request,
-        RecoveryPlan.objects.select_related("baseline_snapshot", "incident"),
+        rows,
         domain_lookups=("domain_name", "baseline_snapshot__domain_name"),
     )
 
@@ -131,9 +157,12 @@ def domain_recovery_plans(request, domain_name: str):
         return _json({})
     try:
         if request.method == "GET":
-            rows = RecoveryPlan.objects.filter(domain_name=domain_name).select_related(
-                "baseline_snapshot",
-                "incident",
+            rows = _consistent_recovery_rows(
+                RecoveryPlan.objects.filter(domain_name=domain_name).select_related(
+                    "baseline_snapshot",
+                    "incident",
+                    "incident__baseline_snapshot",
+                )
             )
             return _json(
                 {

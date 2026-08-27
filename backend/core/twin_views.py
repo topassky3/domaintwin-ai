@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_http_methods
 
 from .models import DomainSnapshot, KnownGoodSnapshot
 from .namecom import NameComAPIError, NameComClient
+from .tenant import require_snapshot_domain
 from .twin import create_snapshot, diff_records, mark_known_good, normalize_records, snapshot_fingerprint
 
 
@@ -21,6 +22,8 @@ def _json(data: dict, status: int = 200) -> JsonResponse:
 
 
 def _error_response(exc: Exception) -> JsonResponse:
+    if isinstance(exc, Http404):
+        return _json({"error": {"message": "Resource not found.", "status": 404}}, status=404)
     if isinstance(exc, NameComAPIError):
         return _json(
             {
@@ -62,7 +65,9 @@ def snapshots(request, domain_name: str):
     if request.method == "OPTIONS":
         return _json({})
     try:
-        marker = KnownGoodSnapshot.objects.filter(domain_name=domain_name).first()
+        marker = KnownGoodSnapshot.objects.select_related("snapshot").filter(domain_name=domain_name).first()
+        if marker:
+            require_snapshot_domain(marker.snapshot, domain_name)
         known_good_id = marker.snapshot_id if marker else None
 
         if request.method == "POST":
@@ -92,31 +97,39 @@ def snapshots(request, domain_name: str):
 def snapshot_detail(request, domain_name: str, snapshot_id: int):
     if request.method == "OPTIONS":
         return _json({})
-    snapshot = get_object_or_404(DomainSnapshot, id=snapshot_id, domain_name=domain_name)
-    marker = KnownGoodSnapshot.objects.filter(domain_name=domain_name).first()
-    return _json(
-        {
-            "snapshot": _serialize_snapshot(
-                snapshot,
-                known_good_id=marker.snapshot_id if marker else None,
-            )
-        }
-    )
+    try:
+        snapshot = get_object_or_404(DomainSnapshot, id=snapshot_id, domain_name=domain_name)
+        marker = KnownGoodSnapshot.objects.select_related("snapshot").filter(domain_name=domain_name).first()
+        if marker:
+            require_snapshot_domain(marker.snapshot, domain_name)
+        return _json(
+            {
+                "snapshot": _serialize_snapshot(
+                    snapshot,
+                    known_good_id=marker.snapshot_id if marker else None,
+                )
+            }
+        )
+    except Exception as exc:
+        return _error_response(exc)
 
 
 @require_http_methods(["POST", "OPTIONS"])
 def snapshot_known_good(request, domain_name: str, snapshot_id: int):
     if request.method == "OPTIONS":
         return _json({})
-    snapshot = get_object_or_404(DomainSnapshot, id=snapshot_id, domain_name=domain_name)
-    marker = mark_known_good(snapshot)
-    return _json(
-        {
-            "domainName": domain_name,
-            "knownGoodSnapshotId": marker.snapshot_id,
-            "markedAt": marker.marked_at.isoformat(),
-        }
-    )
+    try:
+        snapshot = get_object_or_404(DomainSnapshot, id=snapshot_id, domain_name=domain_name)
+        marker = mark_known_good(snapshot)
+        return _json(
+            {
+                "domainName": domain_name,
+                "knownGoodSnapshotId": marker.snapshot_id,
+                "markedAt": marker.marked_at.isoformat(),
+            }
+        )
+    except Exception as exc:
+        return _error_response(exc)
 
 
 @require_http_methods(["GET", "OPTIONS"])
@@ -132,8 +145,11 @@ def live_diff(request, domain_name: str):
                 domain_name=domain_name,
             )
         else:
-            marker = get_object_or_404(KnownGoodSnapshot, domain_name=domain_name)
-            baseline = marker.snapshot
+            marker = get_object_or_404(
+                KnownGoodSnapshot.objects.select_related("snapshot"),
+                domain_name=domain_name,
+            )
+            baseline = require_snapshot_domain(marker.snapshot, domain_name)
 
         live = normalize_records(_live_records(domain_name))
         diff = diff_records(baseline.records, live)

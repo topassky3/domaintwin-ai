@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.db.models import F
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_http_methods
@@ -13,7 +14,12 @@ from .incidents import (
 from .models import HealthObservation, Incident, KnownGoodSnapshot
 from .namecom import NameComAPIError, NameComClient
 from .risk import evaluate_risk
-from .tenant import TenantContextError, tenant_error_response, tenant_scoped_queryset
+from .tenant import (
+    TenantContextError,
+    require_snapshot_domain,
+    tenant_error_response,
+    tenant_scoped_queryset,
+)
 from .twin import diff_records, normalize_records, snapshot_fingerprint
 
 
@@ -117,8 +123,11 @@ def evaluate_domain(request, domain_name: str):
     if request.method == "OPTIONS":
         return _json({})
     try:
-        marker = get_object_or_404(KnownGoodSnapshot, domain_name=domain_name)
-        baseline = marker.snapshot
+        marker = get_object_or_404(
+            KnownGoodSnapshot.objects.select_related("snapshot"),
+            domain_name=domain_name,
+        )
+        baseline = require_snapshot_domain(marker.snapshot, domain_name)
         live = normalize_records(_live_records(domain_name))
         diff = diff_records(baseline.records, live)
         live_fingerprint = snapshot_fingerprint(live)
@@ -172,7 +181,11 @@ def evaluate_domain(request, domain_name: str):
 def domain_monitor_status(request, domain_name: str):
     if request.method == "OPTIONS":
         return _json({})
-    active = Incident.objects.filter(domain_name=domain_name, status=Incident.Status.OPEN).first()
+    active = Incident.objects.filter(
+        domain_name=domain_name,
+        status=Incident.Status.OPEN,
+        baseline_snapshot__domain_name=F("domain_name"),
+    ).first()
     latest_health = HealthObservation.objects.filter(domain_name=domain_name).first()
     if active:
         state = "INCIDENT"
@@ -194,7 +207,10 @@ def domain_monitor_status(request, domain_name: str):
 def domain_incidents(request, domain_name: str):
     if request.method == "OPTIONS":
         return _json({})
-    rows = Incident.objects.filter(domain_name=domain_name)
+    rows = Incident.objects.filter(
+        domain_name=domain_name,
+        baseline_snapshot__domain_name=F("domain_name"),
+    )
     return _json(
         {
             "domainName": domain_name,
