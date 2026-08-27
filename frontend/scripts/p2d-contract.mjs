@@ -18,6 +18,15 @@ const recoveryApplyCall = actorAudit.indexOf("return apply_recovery_plan(plan, c
 const emergencyExecutionEvent = actorAudit.indexOf("append_emergency_audit(\n            plan,\n            EMERGENCY_EXECUTION_ACTOR_EVENT");
 const emergencyApplyCall = actorAudit.indexOf("return apply_emergency_plan(plan, client=client)");
 
+const recoveryUsesRequestActor = recoveryViews.includes("approve_recovery_plan_as(")
+  && recoveryViews.includes("apply_recovery_plan_as(")
+  && recoveryViews.includes("user=request.user")
+  && recoveryViews.includes('membership=getattr(request, "domaintwin_membership", None)');
+const emergencyUsesRequestActor = emergencyViews.includes("approve_emergency_plan_as(")
+  && emergencyViews.includes("apply_emergency_plan_as(")
+  && emergencyViews.includes("user=request.user")
+  && emergencyViews.includes('membership=getattr(request, "domaintwin_membership", None)');
+
 const checks = [
   [actorAudit.includes('"userId": user.pk') && actorAudit.includes('"username": user.get_username()') && actorAudit.includes('"role": role'), "actor evidence captures stable user id, username and server-derived role"],
   [actorAudit.includes('RECOVERY_APPROVAL_ACTOR_EVENT = "APPROVAL_ACTOR_RECORDED"') && actorAudit.includes('RECOVERY_EXECUTION_ACTOR_EVENT = "EXECUTION_ACTOR_AUTHORIZED"'), "recovery approval and execution actor events are explicit"],
@@ -27,8 +36,8 @@ const checks = [
   [actorAudit.includes('"expectedFingerprint": result.expected_fingerprint') && actorAudit.includes('"sourceDomain": result.source_domain_name') && actorAudit.includes('"targetDomain": result.target_domain_name'), "emergency approval evidence binds actor to source, target and expected fingerprint"],
   [recoveryExecutionEvent >= 0 && recoveryApplyCall >= 0 && recoveryExecutionEvent < recoveryApplyCall, "recovery executor is recorded before crossing provider apply boundary"],
   [emergencyExecutionEvent >= 0 && emergencyApplyCall >= 0 && emergencyExecutionEvent < emergencyApplyCall, "emergency executor is recorded before registration/DNS apply boundary"],
-  [recoveryViews.includes("approve_recovery_plan_as(plan, user=request.user)") && recoveryViews.includes("apply_recovery_plan_as(plan, user=request.user)"), "recovery endpoints derive actor from authenticated request user"],
-  [emergencyViews.includes("approve_emergency_plan_as(plan, user=request.user)") && emergencyViews.includes("apply_emergency_plan_as(plan, user=request.user, client=client)"), "emergency endpoints derive actor from authenticated request user"],
+  [recoveryUsesRequestActor, "recovery endpoints derive actor identity from request user and role from active Membership"],
+  [emergencyUsesRequestActor, "emergency endpoints derive actor identity from request user and role from active Membership"],
   [recoveryViews.includes("**recovery_actor_summary(plan)") && emergencyViews.includes("**emergency_actor_summary(plan)"), "plan API responses expose audit-derived approved and execution actors"],
   [actorTests.includes("@override_settings(DOMAIN_TWIN_TESTING=False)"), "actor evidence tests run with production-style authentication/RBAC enforcement"],
   [actorTests.includes("test_recovery_approval_actor_is_not_rewritten_by_idempotent_reapproval"), "approval identity is immutable across idempotent reapproval"],
