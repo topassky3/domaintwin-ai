@@ -1,9 +1,13 @@
+export type DomainTwinRole = "VIEWER" | "OPERATOR" | "APPROVER" | "ADMIN";
+
 export interface AuthUser {
   id: number;
   username: string;
   email: string;
   isStaff: boolean;
   isSuperuser: boolean;
+  role: DomainTwinRole;
+  capabilities: string[];
 }
 
 export interface AuthSession {
