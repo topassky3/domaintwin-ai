@@ -11,6 +11,21 @@ const read = (relativePath) =>
 const workflow = read(".github/workflows/ci.yml");
 const gitignore = read(".gitignore");
 const p1Doc = read("docs/P1_ENGINEERING_BASELINE.md");
+const packageJson = JSON.parse(read("frontend/package.json"));
+const packageLock = JSON.parse(read("frontend/package-lock.json"));
+
+const directDependencies = {
+  ...(packageJson.dependencies ?? {}),
+  ...(packageJson.devDependencies ?? {}),
+};
+const exactVersion = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const dependencyEntries = Object.entries(directDependencies);
+const allDirectDependenciesPinned = dependencyEntries.every(([, version]) =>
+  exactVersion.test(version),
+);
+const lockResolvesPinnedVersions = dependencyEntries.every(([name, version]) =>
+  packageLock.packages?.[`node_modules/${name}`]?.version === version,
+);
 
 const checks = [
   [workflow.includes("pull_request:"), "CI runs on pull requests"],
@@ -40,7 +55,11 @@ const checks = [
   [!workflow.includes("secrets.NAMECOM"), "CI does not require name.com GitHub secrets"],
   [!workflow.includes("secrets.OPENAI"), "CI does not require AI GitHub secrets"],
   [gitignore.includes("*.tsbuildinfo"), "TypeScript build-info cache is ignored"],
-  [p1Doc.includes("P1-A acceptance criteria"), "P1 acceptance criteria are documented"],
+  [p1Doc.includes("P1-A acceptance criteria"), "P1-A acceptance criteria are documented"],
+  [packageLock.lockfileVersion === 3, "frontend uses lockfile v3"],
+  [allDirectDependenciesPinned, "frontend direct dependencies use exact versions"],
+  [!Object.values(directDependencies).includes("latest"), "frontend package.json contains no latest tags"],
+  [lockResolvesPinnedVersions, "package-lock resolves every pinned direct dependency exactly"],
 ];
 
 const failed = checks.filter(([ok]) => !ok);
