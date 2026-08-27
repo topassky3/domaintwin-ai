@@ -23,6 +23,18 @@ USE_TZ = True
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# P2 authentication uses Django's server-side session framework. The browser only
+# receives an opaque HttpOnly session cookie. CSRF tokens are bootstrapped through
+# an authenticated API boundary instead of reading the CSRF cookie from JavaScript.
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_AGE = int(os.getenv("DJANGO_SESSION_COOKIE_AGE_SECONDS", str(60 * 60 * 24 * 14)))
+_SECURE_COOKIES = os.getenv("DJANGO_SECURE_COOKIES", "0") == "1"
+SESSION_COOKIE_SECURE = _SECURE_COOKIES
+CSRF_COOKIE_SECURE = _SECURE_COOKIES
+
 NAMECOM_ENVIRONMENT = os.getenv("NAMECOM_ENVIRONMENT", "sandbox").strip().lower()
 NAMECOM_USERNAME = os.getenv("NAMECOM_USERNAME", "").strip()
 NAMECOM_API_TOKEN = os.getenv("NAMECOM_API_TOKEN", "").strip()
