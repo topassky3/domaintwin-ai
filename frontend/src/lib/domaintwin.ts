@@ -1,3 +1,5 @@
+import { getCsrfToken } from "@/lib/auth";
+
 export type Environment = "sandbox" | "production" | string;
 
 export interface ApiErrorShape {
@@ -308,14 +310,22 @@ export function formatDate(value?: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const normalized = path.replace(/^\/+/, "");
   const headers = new Headers(init?.headers);
+  const method = String(init?.method ?? "GET").toUpperCase();
   if (init?.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (!SAFE_METHODS.has(method) && !headers.has("X-CSRFToken")) {
+    headers.set("X-CSRFToken", await getCsrfToken());
+  }
 
   const response = await fetch(`/api/domaintwin/${normalized}`, {
     ...init,
+    method,
     headers,
+    credentials: "same-origin",
     cache: "no-store",
   });
 
