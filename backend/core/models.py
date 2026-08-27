@@ -51,7 +51,9 @@ class Membership(models.Model):
                 name="unique_membership_user_org",
             ),
             models.CheckConstraint(
-                condition=models.Q(role__in=Role.values),
+                condition=models.Q(
+                    role__in=("VIEWER", "OPERATOR", "APPROVER", "ADMIN")
+                ),
                 name="membership_role_valid",
             ),
         ]
