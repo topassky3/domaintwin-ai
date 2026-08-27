@@ -9,6 +9,15 @@ from django.middleware.csrf import get_token
 from django.views.decorators.http import require_http_methods
 
 from .rbac import authorization_for_user
+from .tenant import (
+    ACTIVE_ORGANIZATION_SESSION_KEY,
+    TenantContextError,
+    active_memberships_for_user,
+    membership_summary,
+    resolve_active_membership,
+    select_active_organization,
+    tenant_error_response,
+)
 
 
 def _json(data: dict, status: int = 200) -> JsonResponse:
@@ -72,6 +81,62 @@ def auth_me(request):
     return _json({"authenticated": True, "user": _serialize_user(request.user)})
 
 
+@require_http_methods(["GET"])
+def auth_organizations(request):
+    if not request.user.is_authenticated:
+        return _json(
+            {"error": {"message": "Authentication required.", "status": 401}},
+            status=401,
+        )
+
+    memberships = list(active_memberships_for_user(request.user))
+    active = None
+    selection_required = False
+    try:
+        active = resolve_active_membership(request)
+    except TenantContextError as exc:
+        if exc.code == "tenant_selection_required":
+            selection_required = True
+        elif exc.code != "no_active_membership":
+            return tenant_error_response(exc)
+
+    return _json(
+        {
+            "organizations": [membership_summary(row) for row in memberships],
+            "activeOrganization": membership_summary(active) if active else None,
+            "selectionRequired": selection_required,
+        }
+    )
+
+
+@require_http_methods(["POST"])
+def auth_active_organization(request):
+    if not request.user.is_authenticated:
+        return _json(
+            {"error": {"message": "Authentication required.", "status": 401}},
+            status=401,
+        )
+
+    try:
+        payload = _parse_body(request)
+    except ValueError as exc:
+        return _json({"error": {"message": str(exc), "status": 400}}, status=400)
+
+    organization_id = str(payload.get("organizationId") or "").strip()
+    if not organization_id:
+        return _json(
+            {"error": {"message": "organizationId is required.", "status": 400}},
+            status=400,
+        )
+
+    try:
+        membership = select_active_organization(request, organization_id)
+    except TenantContextError as exc:
+        return tenant_error_response(exc)
+
+    return _json({"activeOrganization": membership_summary(membership)})
+
+
 @require_http_methods(["POST"])
 def auth_login(request):
     try:
@@ -108,6 +173,7 @@ def auth_login(request):
         )
 
     login(request, user)
+    request.session.pop(ACTIVE_ORGANIZATION_SESSION_KEY, None)
     if remember:
         request.session.set_expiry(settings.SESSION_COOKIE_AGE)
     else:

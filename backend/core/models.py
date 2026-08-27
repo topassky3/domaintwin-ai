@@ -6,6 +6,17 @@ from django.conf import settings
 from django.db import models
 
 
+def canonical_domain_name(value: str) -> str:
+    name = str(value or "").strip().rstrip(".").lower()
+    if not name:
+        raise ValueError("Domain name cannot be empty.")
+    if len(name) > 253:
+        raise ValueError("Domain name cannot exceed 253 characters.")
+    if any(character.isspace() for character in name):
+        raise ValueError("Domain name cannot contain whitespace.")
+    return name
+
+
 class Organization(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=160)
@@ -64,6 +75,35 @@ class Membership(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user} @ {self.organization} ({self.role})"
+
+
+class ManagedDomain(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.PROTECT,
+        related_name="managed_domains",
+    )
+    name = models.CharField(max_length=253, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["organization_id", "name"]
+        indexes = [
+            models.Index(
+                fields=["organization", "is_active"],
+                name="managed_domain_org_active_idx",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        self.name = canonical_domain_name(self.name)
+        return super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return self.name
 
 
 class DomainSnapshot(models.Model):
