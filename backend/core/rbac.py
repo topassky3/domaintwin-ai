@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from django.conf import settings
 from django.http import JsonResponse
 
+from .tenant import TenantContextError, resolve_active_membership, tenant_error_response
+
 
 VIEWER = "VIEWER"
 OPERATOR = "OPERATOR"
@@ -66,6 +68,7 @@ SAFE_METHODS = {"GET", "HEAD"}
 
 
 def role_for_user(user) -> str | None:
+    """Legacy P2 group role used only as bootstrap/migration input after P3-D."""
     if not getattr(user, "is_authenticated", False):
         return None
     if getattr(user, "is_superuser", False):
@@ -85,6 +88,7 @@ def capabilities_for_role(role: str | None) -> tuple[str, ...]:
 
 
 def authorization_for_user(user) -> dict:
+    """Legacy P2 authorization snapshot retained for bootstrap compatibility."""
     role = role_for_user(user)
     return {
         "role": role,
@@ -92,8 +96,34 @@ def authorization_for_user(user) -> dict:
     }
 
 
+def role_for_membership(membership) -> str | None:
+    if membership is None:
+        return None
+    if not bool(getattr(membership, "is_active", False)):
+        return None
+    organization = getattr(membership, "organization", None)
+    if organization is None or not bool(getattr(organization, "is_active", False)):
+        return None
+    role = str(getattr(membership, "role", ""))
+    return role if role in ROLE_CAPABILITIES else None
+
+
+def authorization_for_membership(membership) -> dict:
+    role = role_for_membership(membership)
+    return {
+        "role": role,
+        "capabilities": list(capabilities_for_role(role)),
+    }
+
+
 def user_has_capability(user, capability: str) -> bool:
+    """Legacy P2 helper retained for tests/bootstrap tooling; not used by middleware."""
     role = role_for_user(user)
+    return capability in ROLE_CAPABILITIES.get(role, set())
+
+
+def membership_has_capability(membership, capability: str) -> bool:
+    role = role_for_membership(membership)
     return capability in ROLE_CAPABILITIES.get(role, set())
 
 
@@ -106,8 +136,6 @@ def required_capability(path: str, method: str) -> str | None:
     if method == "OPTIONS" or not path.startswith("/api/") or _public_api(path):
         return None
 
-    # Active health probing stores a fresh observation and is therefore an operator
-    # action even though its historical endpoint uses GET.
     if method in SAFE_METHODS:
         if path.startswith("/api/monitor/domains/") and path.endswith("/health/"):
             return EVALUATE
@@ -142,8 +170,6 @@ def required_capability(path: str, method: str) -> str | None:
     if method in {"PUT", "PATCH", "DELETE"} and path.startswith("/api/namecom/domains/") and "/records/" in path:
         return DNS_MUTATE
 
-    # New state-changing endpoints must be explicitly classified before non-admin
-    # users can call them. This is intentionally conservative.
     return UNCLASSIFIED_MUTATION
 
 
@@ -164,11 +190,11 @@ def _forbidden(*, capability: str, role: str | None) -> JsonResponse:
 
 
 class RoleAuthorizationMiddleware:
-    """Enforce DomainTwin capabilities after session authentication.
+    """Enforce capabilities from the server-resolved active Membership.
 
-    The historical pre-P2 regression suite is bypassed only while Django is running
-    its test command. Dedicated P2 RBAC tests explicitly disable that bypass and
-    exercise the production policy.
+    P3-D deliberately does not trust Django groups or superuser status for tenant
+    authorization. Groups remain bootstrap input only. Every production private API
+    request must resolve an active Membership before capability evaluation.
     """
 
     def __init__(self, get_response):
@@ -183,8 +209,6 @@ class RoleAuthorizationMiddleware:
             return self.get_response(request)
 
         if not request.user.is_authenticated:
-            # PrivateApiSessionMiddleware normally handles this first; keep RBAC
-            # independently fail-closed if middleware ordering changes.
             response = JsonResponse(
                 {"error": {"message": "Authentication required.", "status": 401}},
                 status=401,
@@ -192,10 +216,17 @@ class RoleAuthorizationMiddleware:
             response["Cache-Control"] = "no-store"
             return response
 
-        role = role_for_user(request.user)
+        try:
+            membership = resolve_active_membership(request)
+        except TenantContextError as exc:
+            return tenant_error_response(exc)
+
+        role = role_for_membership(membership)
+        request.domaintwin_membership = membership
+        request.domaintwin_organization = membership.organization
         request.domaintwin_role = role
         request.domaintwin_capabilities = capabilities_for_role(role)
-        if not user_has_capability(request.user, capability):
+        if not membership_has_capability(membership, capability):
             return _forbidden(capability=capability, role=role)
 
         return self.get_response(request)

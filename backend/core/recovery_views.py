@@ -194,7 +194,11 @@ def recovery_plan_approve(request, plan_id: int):
                 status=400,
             )
         plan = get_object_or_404(_tenant_plan_rows(request), id=plan_id)
-        plan = approve_recovery_plan_as(plan, user=request.user)
+        plan = approve_recovery_plan_as(
+            plan,
+            user=request.user,
+            membership=getattr(request, "domaintwin_membership", None),
+        )
         return _json({"plan": _serialize_plan(plan)})
     except ValueError as exc:
         return _json({"error": {"message": str(exc), "status": 400}}, status=400)
@@ -208,7 +212,11 @@ def recovery_plan_apply(request, plan_id: int):
         return _json({})
     try:
         plan = get_object_or_404(_tenant_plan_rows(request), id=plan_id)
-        plan = apply_recovery_plan_as(plan, user=request.user)
+        plan = apply_recovery_plan_as(
+            plan,
+            user=request.user,
+            membership=getattr(request, "domaintwin_membership", None),
+        )
         plan.refresh_from_db()
         status = 200
         if plan.status == RecoveryPlan.Status.PARTIAL:

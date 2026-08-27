@@ -234,7 +234,12 @@ def emergency_plan_approve(request, plan_id: int):
                 status=400,
             )
         plan = get_object_or_404(_tenant_plan_rows(request), id=plan_id)
-        return _json({"plan": _serialize_plan(approve_emergency_plan_as(plan, user=request.user))})
+        result = approve_emergency_plan_as(
+            plan,
+            user=request.user,
+            membership=getattr(request, "domaintwin_membership", None),
+        )
+        return _json({"plan": _serialize_plan(result)})
     except Exception as exc:
         return _error_response(exc)
 
@@ -257,7 +262,12 @@ def emergency_plan_apply(request, plan_id: int):
                 status=400,
             )
         client = NameComClient()
-        result = apply_emergency_plan_as(plan, user=request.user, client=client)
+        result = apply_emergency_plan_as(
+            plan,
+            user=request.user,
+            membership=getattr(request, "domaintwin_membership", None),
+            client=client,
+        )
         status = 200
         if result.status == EmergencyDomainPlan.Status.PARTIAL:
             status = 207

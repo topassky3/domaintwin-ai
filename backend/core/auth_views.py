@@ -8,7 +8,7 @@ from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.http import require_http_methods
 
-from .rbac import authorization_for_user
+from .rbac import authorization_for_membership
 from .tenant import (
     ACTIVE_ORGANIZATION_SESSION_KEY,
     TenantContextError,
@@ -38,15 +38,42 @@ def _parse_body(request) -> dict:
     return payload
 
 
-def _serialize_user(user) -> dict:
+def _serialize_user(user, membership=None) -> dict:
+    authorization = authorization_for_membership(membership)
     return {
         "id": user.pk,
         "username": user.get_username(),
         "email": user.email,
         "isStaff": bool(user.is_staff),
         "isSuperuser": bool(user.is_superuser),
-        **authorization_for_user(user),
+        **authorization,
     }
+
+
+def _session_tenant_state(request):
+    try:
+        membership = resolve_active_membership(request)
+        return membership, False, None
+    except TenantContextError as exc:
+        if exc.code == "tenant_selection_required":
+            return None, True, exc.code
+        if exc.code == "no_active_membership":
+            return None, False, exc.code
+        raise
+
+
+def _authenticated_payload(request, user, *, remember: bool | None = None) -> dict:
+    membership, selection_required, tenant_error_code = _session_tenant_state(request)
+    payload = {
+        "authenticated": True,
+        "user": _serialize_user(user, membership),
+        "activeOrganization": membership_summary(membership) if membership else None,
+        "selectionRequired": selection_required,
+        "tenantErrorCode": tenant_error_code,
+    }
+    if remember is not None:
+        payload["remember"] = remember
+    return payload
 
 
 def _resolve_login_user(identifier: str):
@@ -78,7 +105,10 @@ def auth_me(request):
             {"error": {"message": "Authentication required.", "status": 401}},
             status=401,
         )
-    return _json({"authenticated": True, "user": _serialize_user(request.user)})
+    try:
+        return _json(_authenticated_payload(request, request.user))
+    except TenantContextError as exc:
+        return tenant_error_response(exc)
 
 
 @require_http_methods(["GET"])
@@ -134,7 +164,12 @@ def auth_active_organization(request):
     except TenantContextError as exc:
         return tenant_error_response(exc)
 
-    return _json({"activeOrganization": membership_summary(membership)})
+    return _json(
+        {
+            "activeOrganization": membership_summary(membership),
+            "authorization": authorization_for_membership(membership),
+        }
+    )
 
 
 @require_http_methods(["POST"])
@@ -179,13 +214,10 @@ def auth_login(request):
     else:
         request.session.set_expiry(0)
 
-    return _json(
-        {
-            "authenticated": True,
-            "remember": remember,
-            "user": _serialize_user(user),
-        }
-    )
+    try:
+        return _json(_authenticated_payload(request, user, remember=remember))
+    except TenantContextError as exc:
+        return tenant_error_response(exc)
 
 
 @require_http_methods(["POST"])

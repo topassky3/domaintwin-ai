@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useMemo, useState } from "react";
-import type { AuthUser } from "@/lib/auth";
-import { signOut } from "@/lib/auth";
+import type { AuthUser, OrganizationMembership } from "@/lib/auth";
+import { listOrganizations, selectActiveOrganization, signOut } from "@/lib/auth";
 import { api, DomainsResponse, domainNameOf, NameComStatus } from "@/lib/domaintwin";
 
 const nav = [
@@ -24,6 +24,28 @@ export function ProductShell({ children, user }: { children: ReactNode; user: Au
   const [domainsReachable, setDomainsReachable] = useState(false);
   const [fallbackEnvironment, setFallbackEnvironment] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [organizations, setOrganizations] = useState<OrganizationMembership[]>([]);
+  const [activeOrganization, setActiveOrganization] = useState<OrganizationMembership | null>(null);
+  const [selectingOrganization, setSelectingOrganization] = useState(false);
+  const [organizationError, setOrganizationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listOrganizations()
+      .then((directory) => {
+        if (cancelled) return;
+        setOrganizations(directory.organizations);
+        setActiveOrganization(directory.activeOrganization);
+        setOrganizationError(null);
+      })
+      .catch((reason) => {
+        if (cancelled) return;
+        setOrganizationError(reason instanceof Error ? reason.message : "Organization context unavailable");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,6 +120,20 @@ export function ProductShell({ children, user }: { children: ReactNode; user: Au
         ? "Provider status unavailable"
         : "Checking provider…";
 
+  async function handleOrganizationChange(organizationId: string) {
+    if (!organizationId || selectingOrganization) return;
+    setSelectingOrganization(true);
+    setOrganizationError(null);
+    try {
+      const selected = await selectActiveOrganization(organizationId);
+      setActiveOrganization(selected);
+      window.location.assign(pathname);
+    } catch (reason) {
+      setOrganizationError(reason instanceof Error ? reason.message : "Unable to switch organization");
+      setSelectingOrganization(false);
+    }
+  }
+
   async function handleSignOut() {
     if (signingOut) return;
     setSigningOut(true);
@@ -165,9 +201,25 @@ export function ProductShell({ children, user }: { children: ReactNode; user: Au
             <strong>{activeDomain ?? "Domain portfolio"}</strong>
           </div>
           <div className="product-topbar-actions">
+            {organizations.length > 0 ? (
+              <select
+                aria-label="Active organization"
+                value={activeOrganization?.organizationId ?? ""}
+                disabled={selectingOrganization}
+                onChange={(event) => void handleOrganizationChange(event.target.value)}
+                title={organizationError ?? "Server-validated active organization"}
+              >
+                <option value="" disabled>Select organization</option>
+                {organizations.map((organization) => (
+                  <option value={organization.organizationId} key={organization.organizationId}>
+                    {organization.organizationName} · {organization.role}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <span className={`product-env product-env--large ${environmentClass}`}>{environment}</span>
             <span className="product-connection is-online" title={`Capabilities: ${user.capabilities.join(", ")}`}>
-              <i /> {user.role} · {user.username}
+              <i /> {user.role ?? "SELECT TENANT"} · {user.username}
             </span>
             <span className={providerReachable ? "product-connection is-online" : "product-connection"}>
               <i /> {connectionLabel}

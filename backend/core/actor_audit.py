@@ -10,8 +10,8 @@ from .emergency import (
     apply_emergency_plan,
     approve_emergency_plan,
 )
-from .models import EmergencyDomainPlan, RecoveryPlan
-from .rbac import role_for_user
+from .models import EmergencyDomainPlan, Membership, RecoveryPlan
+from .rbac import role_for_membership, role_for_user
 from .recovery import append_recovery_audit, apply_recovery_plan, approve_recovery_plan
 
 RECOVERY_APPROVAL_ACTOR_EVENT = "APPROVAL_ACTOR_RECORDED"
@@ -20,18 +20,42 @@ EMERGENCY_APPROVAL_ACTOR_EVENT = "APPROVAL_ACTOR_RECORDED"
 EMERGENCY_EXECUTION_ACTOR_EVENT = "EXECUTION_ACTOR_AUTHORIZED"
 
 
-def actor_snapshot(user) -> dict[str, Any]:
-    """Capture the minimum immutable identity evidence needed for an audit event."""
+def _actor_membership(user, membership=None):
+    if membership is not None:
+        if membership.user_id != user.pk:
+            raise ValueError("Actor Membership does not belong to the authenticated user.")
+        if not membership.is_active or not membership.organization.is_active:
+            raise ValueError("Actor audit requires an active Membership and Organization.")
+        return membership
+
+    candidates = list(
+        Membership.objects.select_related("organization")
+        .filter(user=user, is_active=True, organization__is_active=True)
+        .order_by("organization_id")[:2]
+    )
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
+def actor_snapshot(user, *, membership=None) -> dict[str, Any]:
+    """Capture immutable actor evidence from the active tenant Membership."""
 
     if not getattr(user, "is_authenticated", False):
         if getattr(settings, "DOMAIN_TWIN_TESTING", False):
-            # Historical deterministic endpoint tests predate P2 sessions. The
-            # production-style P2 security suites explicitly disable this marker.
             return {"userId": None, "username": "test-system", "role": "SYSTEM"}
         raise ValueError("Actor audit requires an authenticated user.")
-    role = role_for_user(user)
+
+    resolved = _actor_membership(user, membership)
+    if resolved is not None:
+        role = role_for_membership(resolved)
+    elif getattr(settings, "DOMAIN_TWIN_TESTING", False):
+        role = role_for_user(user)
+    else:
+        raise ValueError("Actor audit requires an explicit active Membership context.")
+
     if role is None:
-        raise ValueError("Actor audit requires a resolved DomainTwin role.")
+        raise ValueError("Actor audit requires a resolved DomainTwin Membership role.")
     return {
         "userId": user.pk,
         "username": user.get_username(),
@@ -62,10 +86,8 @@ def emergency_actor_summary(plan: EmergencyDomainPlan) -> dict[str, Any]:
 
 
 @transaction.atomic
-def approve_recovery_plan_as(plan: RecoveryPlan, *, user) -> RecoveryPlan:
-    """Approve a recovery plan and append an immutable actor evidence event once."""
-
-    actor = actor_snapshot(user)
+def approve_recovery_plan_as(plan: RecoveryPlan, *, user, membership=None) -> RecoveryPlan:
+    actor = actor_snapshot(user, membership=membership)
     expected_plan_fingerprint = plan.plan_fingerprint
     result = approve_recovery_plan(plan)
     result.refresh_from_db()
@@ -94,11 +116,10 @@ def apply_recovery_plan_as(
     plan: RecoveryPlan,
     *,
     user,
+    membership=None,
     client=None,
 ) -> RecoveryPlan:
-    """Record the authorized executor before crossing the recovery APPLY boundary."""
-
-    actor = actor_snapshot(user)
+    actor = actor_snapshot(user, membership=membership)
     plan.refresh_from_db()
     if plan.status == RecoveryPlan.Status.APPROVED:
         append_recovery_audit(
@@ -115,10 +136,8 @@ def apply_recovery_plan_as(
 
 
 @transaction.atomic
-def approve_emergency_plan_as(plan: EmergencyDomainPlan, *, user) -> EmergencyDomainPlan:
-    """Approve emergency continuity and append immutable actor evidence once."""
-
-    actor = actor_snapshot(user)
+def approve_emergency_plan_as(plan: EmergencyDomainPlan, *, user, membership=None) -> EmergencyDomainPlan:
+    actor = actor_snapshot(user, membership=membership)
     expected_plan_fingerprint = plan.plan_fingerprint
     result = approve_emergency_plan(plan)
     result.refresh_from_db()
@@ -148,11 +167,10 @@ def apply_emergency_plan_as(
     plan: EmergencyDomainPlan,
     *,
     user,
+    membership=None,
     client,
 ) -> EmergencyDomainPlan:
-    """Record each authorized emergency execution/resume before provider mutation."""
-
-    actor = actor_snapshot(user)
+    actor = actor_snapshot(user, membership=membership)
     plan.refresh_from_db()
     if plan.status in {
         EmergencyDomainPlan.Status.APPROVED,

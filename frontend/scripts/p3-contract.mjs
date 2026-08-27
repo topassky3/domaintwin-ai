@@ -17,6 +17,8 @@ const domainBootstrap = read("backend/core/management/commands/attach_domaintwin
 const tests = read("backend/core/test_multitenant_foundation.py");
 const domainTests = read("backend/core/test_multitenant_domains.py");
 const resourceTests = read("backend/core/test_multitenant_resources.py");
+const membershipRbacTests = read("backend/core/test_membership_rbac.py");
+const actorAudit = read("backend/core/actor_audit.py");
 const rbac = read("backend/core/rbac.py");
 const tenant = read("backend/core/tenant.py");
 const tenantMiddleware = read("backend/core/tenant_middleware.py");
@@ -28,10 +30,13 @@ const emergencyViews = read("backend/core/emergency_views.py");
 const aiViews = read("backend/core/ai_views.py");
 const urls = read("backend/core/urls.py");
 const settings = read("backend/config/settings.py");
+const frontendAuth = read("frontend/src/lib/auth.ts");
+const productShell = read("frontend/src/components/ProductShell.tsx");
 const workflow = read(".github/workflows/ci.yml");
 const doc = read("docs/P3_MULTI_TENANT.md");
 const p3bDoc = read("docs/P3B_TENANT_DOMAINS.md");
 const p3cDoc = read("docs/P3C_TENANT_RESOURCES.md");
+const p3dDoc = read("docs/P3D_MEMBERSHIP_RBAC.md");
 
 const checks = [
   [models.includes("class Organization(models.Model):") && models.includes("models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)"), "Organization uses UUID primary-key identity"],
@@ -45,7 +50,6 @@ const checks = [
   [bootstrap.includes('action="append"') && bootstrap.includes("required=True"), "bootstrap membership grant requires explicit usernames"],
   [tests.includes("test_same_user_can_hold_different_roles_per_organization") && tests.includes("test_duplicate_membership_is_rejected_by_database"), "foundation tests cover per-tenant roles and duplicate membership denial"],
   [tests.includes("test_bootstrap_command_copies_current_p2_role_and_is_idempotent") && tests.includes("test_bootstrap_validates_all_users_before_creating_organization"), "bootstrap idempotency and fail-before-create behavior are tested"],
-  [rbac.includes("def role_for_user(user)") && !rbac.includes("Membership"), "P3 preserves P2 runtime RBAC until the P3-D membership cutover"],
   [models.includes("class ManagedDomain(models.Model):") && models.includes('related_name="managed_domains"') && models.includes("name = models.CharField(max_length=253, unique=True)"), "P3-B adds a single Organization-owned managed-domain root"],
   [models.includes("def canonical_domain_name") && models.includes("self.name = canonical_domain_name(self.name)"), "managed domain names are canonicalized before persistence"],
   [migrationB.includes('name="ManagedDomain"') && !migrationB.includes('model_name="domainsnapshot"') && !migrationB.includes('model_name="incident"'), "P3-B schema migration adds ownership root without rewriting historical evidence"],
@@ -53,7 +57,7 @@ const checks = [
   [tenant.includes("len(candidates) == 1") && tenant.includes('code="tenant_selection_required"') && tenant.includes("request.session.pop(ACTIVE_ORGANIZATION_SESSION_KEY"), "tenant resolution auto-selects one membership and fails closed on ambiguity or stale selection"],
   [tenant.includes("managed_domain_for_request") && tenant.includes("organization=membership.organization") && tenant.includes("raise Http404"), "domain ownership lookup is scoped to the resolved active Organization and non-disclosing"],
   [tenantMiddleware.includes('DOMAIN_KWARGS = ("domain_name", "source_domain")') && tenantMiddleware.includes("managed_domain_for_request") && tenantMiddleware.includes("view_kwargs[domain_key] = managed_domain.name"), "domain-name routes are tenant-gated and canonicalized before view/provider execution"],
-  [settings.indexOf("core.rbac.RoleAuthorizationMiddleware") < settings.indexOf("core.tenant_middleware.TenantDomainBoundaryMiddleware"), "tenant domain boundary runs after P2 capability denial and before views"],
+  [settings.indexOf("core.rbac.RoleAuthorizationMiddleware") < settings.indexOf("core.tenant_middleware.TenantDomainBoundaryMiddleware"), "tenant domain boundary runs after capability denial and before views"],
   [authViews.includes("auth_organizations") && authViews.includes("auth_active_organization") && urls.includes("auth/active-organization/"), "session tenant discovery and explicit selection endpoints are routed"],
   [views.includes("managed_names = set(") && views.includes("_domain_name_from_payload(row) in managed_names"), "name.com domain inventory is filtered to the active tenant"],
   [domainBootstrap.includes("LEGACY_DOMAIN_SOURCES") && domainBootstrap.includes("--from-legacy") && domainBootstrap.includes("--detach") && domainBootstrap.includes("Domain ownership conflict"), "legacy domain attachment is explicit, conflict-checked, idempotent and reversible"],
@@ -69,6 +73,14 @@ const checks = [
   [resourceTests.includes("test_cross_tenant_incident_and_ai_ids_fail_before_ai_execution") && resourceTests.includes("test_cross_tenant_recovery_ids_fail_before_approval_or_apply") && resourceTests.includes("test_cross_tenant_emergency_ids_fail_before_provider_or_mutation"), "P3-C regression tests cover cross-tenant read, AI, recovery and emergency boundaries"],
   [resourceTests.includes("test_mismatched_resource_and_baseline_tenant_fails_closed") && resourceTests.includes("test_same_tenant_object_ids_remain_readable"), "P3-C tests prove chain mismatch fails closed while same-tenant IDs still work"],
   [p3cDoc.includes("P3-C acceptance criteria") && p3cDoc.includes("no fingerprint algorithm or fingerprint input changes") && p3cDoc.includes("no schema/data migration"), "P3-C preserves deterministic evidence and documents the no-rewrite ownership strategy"],
+  [rbac.includes("def authorization_for_membership") && rbac.includes("membership = resolve_active_membership(request)") && rbac.includes("membership_has_capability(membership, capability)"), "P3-D runtime RBAC authority comes from the active Membership"],
+  [rbac.includes("Legacy P2 group role used only as bootstrap/migration input") && bootstrap.includes("role_for_user(user)"), "P2 group roles remain bootstrap input rather than runtime tenant authority"],
+  [membershipRbacTests.includes("test_global_admin_group_does_not_elevate_viewer_membership") && membershipRbacTests.includes("test_membership_admin_authorizes_even_when_group_authority_is_irrelevant"), "P3-D tests prove global groups cannot override Membership authorization"],
+  [membershipRbacTests.includes("test_superuser_is_not_cross_tenant_admin_bypass") && membershipRbacTests.includes("test_revoked_selected_membership_is_not_authority"), "P3-D tests cover tenant-explicit superuser and revoked Membership behavior"],
+  [authViews.includes("authorization_for_membership") && authViews.includes('"activeOrganization"') && authViews.includes('"selectionRequired"'), "auth/me exposes active tenant and membership-derived authorization"],
+  [actorAudit.includes("role_for_membership") && recoveryViews.includes('membership=getattr(request, "domaintwin_membership", None)') && emergencyViews.includes('membership=getattr(request, "domaintwin_membership", None)'), "actor audit receives the same active Membership used for authorization"],
+  [frontendAuth.includes("listOrganizations") && frontendAuth.includes("selectActiveOrganization") && productShell.includes('aria-label="Active organization"'), "product shell can switch active Organization through the server-validated session API"],
+  [p3dDoc.includes("P3-D acceptance criteria") && p3dDoc.includes("Django `is_superuser` is not a tenant authorization bypass") && p3dDoc.includes("no schema migration or fingerprint input change"), "P3-D Membership RBAC cutover and invariants are documented"],
   [workflow.includes("npm run p3:contract"), "P3 contract runs in GitHub CI"],
   [doc.includes("## P3-A acceptance criteria") && doc.includes("P3-B — Tenant-scoped domain inventory") && doc.includes("P3-E — Tenant security regression"), "P3 architecture and checkpoint acceptance criteria are documented"],
 ];
