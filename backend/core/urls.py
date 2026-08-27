@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .ai_views import incident_explanation
+from .auth_views import auth_csrf, auth_login, auth_logout, auth_me
 from .emergency_views import (
     emergency_check,
     emergency_plan_apply,
@@ -36,6 +37,10 @@ from .views import (
 
 urlpatterns = [
     path("health/", health, name="health"),
+    path("auth/csrf/", auth_csrf, name="auth-csrf"),
+    path("auth/login/", auth_login, name="auth-login"),
+    path("auth/logout/", auth_logout, name="auth-logout"),
+    path("auth/me/", auth_me, name="auth-me"),
     path("namecom/status/", namecom_status, name="namecom-status"),
     path("namecom/domains/", namecom_domains, name="namecom-domains"),
     path("namecom/domains/<str:domain_name>/", namecom_domain, name="namecom-domain"),
