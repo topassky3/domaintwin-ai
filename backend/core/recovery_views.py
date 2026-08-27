@@ -7,14 +7,14 @@ from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from .actor_audit import (
+    apply_recovery_plan_as,
+    approve_recovery_plan_as,
+    recovery_actor_summary,
+)
 from .models import Incident, KnownGoodSnapshot, RecoveryPlan
 from .namecom import NameComAPIError, NameComClient
-from .recovery import (
-    RecoveryError,
-    apply_recovery_plan,
-    approve_recovery_plan,
-    create_recovery_plan,
-)
+from .recovery import RecoveryError, create_recovery_plan
 
 
 def _cors(response: JsonResponse) -> JsonResponse:
@@ -85,6 +85,7 @@ def _serialize_plan(plan: RecoveryPlan, *, include_audit: bool = True) -> dict:
         "verifiedAt": plan.verified_at.isoformat() if plan.verified_at else None,
         "createdAt": plan.created_at.isoformat(),
         "updatedAt": plan.updated_at.isoformat(),
+        **recovery_actor_summary(plan),
     }
     if include_audit:
         payload["audit"] = [
@@ -191,7 +192,7 @@ def recovery_plan_approve(request, plan_id: int):
             RecoveryPlan.objects.select_related("baseline_snapshot", "incident"),
             id=plan_id,
         )
-        plan = approve_recovery_plan(plan)
+        plan = approve_recovery_plan_as(plan, user=request.user)
         return _json({"plan": _serialize_plan(plan)})
     except ValueError as exc:
         return _json({"error": {"message": str(exc), "status": 400}}, status=400)
@@ -209,7 +210,7 @@ def recovery_plan_apply(request, plan_id: int):
             RecoveryPlan.objects.select_related("baseline_snapshot", "incident"),
             id=plan_id,
         )
-        plan = apply_recovery_plan(plan)
+        plan = apply_recovery_plan_as(plan, user=request.user)
         plan.refresh_from_db()
         status = 200
         if plan.status == RecoveryPlan.Status.PARTIAL:
