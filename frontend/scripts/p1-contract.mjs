@@ -27,16 +27,31 @@ const lockResolvesPinnedVersions = dependencyEntries.every(([name, version]) =>
   packageLock.packages?.[`node_modules/${name}`]?.version === version,
 );
 
+const checkoutPin =
+  "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
+const setupPythonPin =
+  "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97";
+const setupNodePin =
+  "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020";
+
 const checks = [
   [workflow.includes("pull_request:"), "CI runs on pull requests"],
   [workflow.includes("push:"), "CI runs on pushes"],
   [workflow.includes("workflow_dispatch:"), "CI supports manual dispatch"],
   [workflow.includes("branches: [main]"), "CI targets main"],
   [workflow.includes('python-version: "3.12"'), "Python 3.12 is explicit"],
-  [workflow.includes('node-version: "20"'), "Node.js 20 is explicit"],
+  [workflow.includes('node-version: "20"'), "Node.js 20 application runtime is explicit"],
+  [workflow.split(checkoutPin).length - 1 === 2, "checkout is pinned to the verified v7.0.1 commit"],
+  [workflow.includes(setupPythonPin), "setup-python is pinned to the verified v7.0.0 commit"],
+  [workflow.includes(setupNodePin), "setup-node is pinned to the verified v7.0.0 commit"],
+  [!workflow.includes("actions/checkout@v4"), "deprecated checkout v4 action is absent"],
+  [!workflow.includes("actions/setup-python@v5"), "deprecated setup-python v5 action is absent"],
+  [!workflow.includes("actions/setup-node@v4"), "deprecated setup-node v4 action is absent"],
   [workflow.includes("python manage.py makemigrations --check --dry-run"), "migration drift is checked"],
   [workflow.includes("python manage.py check"), "Django system check is automated"],
   [workflow.includes("python manage.py test core"), "backend regression is automated"],
+  [workflow.includes("python -m pip check"), "Python dependency graph is validated"],
+  [workflow.includes("Backend dependency pins verified"), "backend direct pins are verified in CI"],
   [workflow.includes("run: npm ci"), "frontend uses lockfile-exact npm ci"],
   [workflow.includes("npm run gate7:contract"), "Gate 7 contract remains in CI"],
   [workflow.includes("npm run gate8:contract"), "Gate 8 contract remains in CI"],
@@ -56,6 +71,7 @@ const checks = [
   [!workflow.includes("secrets.OPENAI"), "CI does not require AI GitHub secrets"],
   [gitignore.includes("*.tsbuildinfo"), "TypeScript build-info cache is ignored"],
   [p1Doc.includes("P1-A acceptance criteria"), "P1-A acceptance criteria are documented"],
+  [p1Doc.includes("P1-D acceptance criteria"), "P1-D acceptance criteria are documented"],
   [packageLock.lockfileVersion === 3, "frontend uses lockfile v3"],
   [allDirectDependenciesPinned, "frontend direct dependencies use exact versions"],
   [!Object.values(directDependencies).includes("latest"), "frontend package.json contains no latest tags"],
