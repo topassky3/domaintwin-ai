@@ -134,6 +134,27 @@ def managed_domain_for_request(request, domain_name: str) -> tuple[ManagedDomain
     return managed_domain, membership
 
 
+def tenant_scoped_queryset(request, queryset, *, domain_lookups: str | tuple[str, ...]):
+    """Scope legacy/derived evidence through active ManagedDomain ownership.
+
+    Historical evidence intentionally keeps its deterministic domain-name fields. P3-C
+    therefore derives ownership from the canonical ManagedDomain registry instead of
+    copying organization identifiers into fingerprinted evidence. Multiple lookups may
+    be supplied so a derived row and its baseline chain must agree on tenant ownership.
+    """
+
+    membership = resolve_active_membership(request)
+    owned_names = ManagedDomain.objects.filter(
+        organization=membership.organization,
+        is_active=True,
+    ).values_list("name", flat=True)
+    lookups = (domain_lookups,) if isinstance(domain_lookups, str) else domain_lookups
+    scoped = queryset
+    for lookup in lookups:
+        scoped = scoped.filter(**{f"{lookup}__in": owned_names})
+    return scoped
+
+
 def tenant_error_response(exc: TenantContextError) -> JsonResponse:
     response = JsonResponse(
         {

@@ -13,6 +13,7 @@ from .incidents import (
 from .models import HealthObservation, Incident, KnownGoodSnapshot
 from .namecom import NameComAPIError, NameComClient
 from .risk import evaluate_risk
+from .tenant import TenantContextError, tenant_error_response, tenant_scoped_queryset
 from .twin import diff_records, normalize_records, snapshot_fingerprint
 
 
@@ -28,6 +29,8 @@ def _json(data: dict, status: int = 200) -> JsonResponse:
 
 
 def _error_response(exc: Exception) -> JsonResponse:
+    if isinstance(exc, TenantContextError):
+        return _cors(tenant_error_response(exc))
     if isinstance(exc, UnsafeHealthTarget):
         return _json({"error": {"message": str(exc), "status": 400}}, status=400)
     if isinstance(exc, Http404):
@@ -206,7 +209,12 @@ def incident_detail(request, incident_id: int):
     if request.method == "OPTIONS":
         return _json({})
     try:
-        incident = get_object_or_404(Incident, id=incident_id)
+        rows = tenant_scoped_queryset(
+            request,
+            Incident.objects.select_related("baseline_snapshot"),
+            domain_lookups=("domain_name", "baseline_snapshot__domain_name"),
+        )
+        incident = get_object_or_404(rows, id=incident_id)
         return _json({"incident": _serialize_incident(incident, include_timeline=True)})
     except Exception as exc:
         return _error_response(exc)

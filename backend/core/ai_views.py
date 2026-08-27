@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_http_methods
 
 from .ai import build_evidence_bundle, generate_incident_explanation, resolve_evidence
 from .models import Incident, IncidentExplanation
+from .tenant import TenantContextError, tenant_error_response, tenant_scoped_queryset
 
 
 def _cors(response: JsonResponse) -> JsonResponse:
@@ -54,10 +55,17 @@ def incident_explanation(request, incident_id: int):
     if request.method == "OPTIONS":
         return _json({})
 
-    incident = get_object_or_404(
-        Incident.objects.select_related("baseline_snapshot"),
-        id=incident_id,
-    )
+    try:
+        rows = tenant_scoped_queryset(
+            request,
+            Incident.objects.select_related("baseline_snapshot"),
+            domain_lookups=("domain_name", "baseline_snapshot__domain_name"),
+        )
+        incident = get_object_or_404(rows, id=incident_id)
+    except TenantContextError as exc:
+        return _cors(tenant_error_response(exc))
+    except Http404:
+        return _json({"error": {"message": "Resource not found.", "status": 404}}, status=404)
 
     if request.method == "GET":
         latest = IncidentExplanation.objects.filter(

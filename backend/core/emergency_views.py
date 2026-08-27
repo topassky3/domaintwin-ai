@@ -20,6 +20,7 @@ from .emergency import (
 )
 from .models import EmergencyDomainPlan
 from .namecom import NameComAPIError, NameComClient
+from .tenant import TenantContextError, tenant_error_response, tenant_scoped_queryset
 
 
 def _cors(response: JsonResponse) -> JsonResponse:
@@ -46,6 +47,8 @@ def _parse_body(request) -> dict:
 
 
 def _error_response(exc: Exception) -> JsonResponse:
+    if isinstance(exc, TenantContextError):
+        return _cors(tenant_error_response(exc))
     if isinstance(exc, EmergencyDomainError):
         return _json({"error": {"message": str(exc), "status": exc.status_code}}, status=exc.status_code)
     if isinstance(exc, Http404):
@@ -104,6 +107,14 @@ def _serialize_plan(plan: EmergencyDomainPlan, *, include_audit: bool = True) ->
             for event in plan.audit_events.all()
         ]
     return payload
+
+
+def _tenant_plan_rows(request):
+    return tenant_scoped_queryset(
+        request,
+        EmergencyDomainPlan.objects.select_related("baseline_snapshot"),
+        domain_lookups=("source_domain_name", "baseline_snapshot__domain_name"),
+    )
 
 
 @require_http_methods(["GET", "OPTIONS"])
@@ -205,10 +216,7 @@ def emergency_plan_detail(request, plan_id: int):
     if request.method == "OPTIONS":
         return _json({})
     try:
-        plan = get_object_or_404(
-            EmergencyDomainPlan.objects.select_related("baseline_snapshot"),
-            id=plan_id,
-        )
+        plan = get_object_or_404(_tenant_plan_rows(request), id=plan_id)
         return _json({"plan": _serialize_plan(plan)})
     except Exception as exc:
         return _error_response(exc)
@@ -225,10 +233,7 @@ def emergency_plan_approve(request, plan_id: int):
                 {"error": {"message": 'Explicit approval requires JSON {"approve": true}.', "status": 400}},
                 status=400,
             )
-        plan = get_object_or_404(
-            EmergencyDomainPlan.objects.select_related("baseline_snapshot"),
-            id=plan_id,
-        )
+        plan = get_object_or_404(_tenant_plan_rows(request), id=plan_id)
         return _json({"plan": _serialize_plan(approve_emergency_plan_as(plan, user=request.user))})
     except Exception as exc:
         return _error_response(exc)
@@ -240,10 +245,7 @@ def emergency_plan_apply(request, plan_id: int):
         return _json({})
     try:
         payload = _parse_body(request)
-        plan = get_object_or_404(
-            EmergencyDomainPlan.objects.select_related("baseline_snapshot"),
-            id=plan_id,
-        )
+        plan = get_object_or_404(_tenant_plan_rows(request), id=plan_id)
         if payload.get("execute") is not True or payload.get("targetDomain") != plan.target_domain_name:
             return _json(
                 {
