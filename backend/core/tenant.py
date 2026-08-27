@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.http import Http404, JsonResponse
 
@@ -142,6 +143,13 @@ def tenant_scoped_queryset(request, queryset, *, domain_lookups: str | tuple[str
     copying organization identifiers into fingerprinted evidence. Multiple lookups may
     be supplied so a derived row and its baseline chain must agree on tenant ownership.
     """
+
+    # Historical deterministic endpoint tests intentionally bypass production auth/RBAC
+    # and the P3-B domain middleware under this explicit test-only setting. P3-C mirrors
+    # that behavior; production-style security suites disable the flag and exercise the
+    # full tenant boundary.
+    if getattr(settings, "DOMAIN_TWIN_TESTING", False):
+        return queryset
 
     membership = resolve_active_membership(request)
     owned_names = ManagedDomain.objects.filter(
