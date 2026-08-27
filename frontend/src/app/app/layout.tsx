@@ -2,11 +2,12 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { ProductShell } from "@/components/ProductShell";
+import type { AuthSession, AuthUser } from "@/lib/auth";
 import "./product.css";
 
 export const dynamic = "force-dynamic";
 
-async function requireWorkspaceSession() {
+async function requireWorkspaceSession(): Promise<AuthUser> {
   const store = await cookies();
   const cookieHeader = store
     .getAll()
@@ -33,9 +34,18 @@ async function requireWorkspaceSession() {
   }
 
   if (!response.ok) redirect("/login");
+
+  let session: AuthSession;
+  try {
+    session = await response.json() as AuthSession;
+  } catch {
+    redirect("/login");
+  }
+  if (!session.authenticated || !session.user) redirect("/login");
+  return session.user;
 }
 
 export default async function AppLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  await requireWorkspaceSession();
-  return <ProductShell>{children}</ProductShell>;
+  const user = await requireWorkspaceSession();
+  return <ProductShell user={user}>{children}</ProductShell>;
 }
