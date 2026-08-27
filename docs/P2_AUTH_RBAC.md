@@ -84,14 +84,57 @@ P2-A passes only when all of the following are true:
 15. all backend core tests pass with the new authentication regressions included.
 16. no recovery, emergency, risk or AI decision behavior is changed in P2-A.
 
+## P2-B — Private workspace boundary
+
+P2-B closes the anonymous product surface at both layers.
+
+Backend boundary:
+
+```text
+PUBLIC
+  /api/health/
+  /api/auth/*
+
+AUTHENTICATED SESSION REQUIRED
+  /api/namecom/*
+  /api/twin/*
+  /api/risk/*
+  /api/monitor/*
+  /api/incidents/*
+  /api/ai/*
+  /api/recovery/*
+  /api/emergency/*
+```
+
+`PrivateApiSessionMiddleware` runs after Django `AuthenticationMiddleware`, so authorization decisions use the server-side session identity. Anonymous private API requests receive explicit `401` JSON and are stopped before provider or recovery view logic executes. `OPTIONS` requests remain protocol-safe.
+
+Frontend boundary:
+
+`frontend/src/app/app/layout.tsx` is dynamic and verifies the current Django session server-side through `/api/auth/me/` before rendering `ProductShell`. Missing, invalid or unavailable sessions redirect to `/login`.
+
+The public product explanation and guided demonstration remain intentionally separate from the private workspace.
+
+The historical pre-auth endpoint regression suite executes under a test-only marker so deterministic behavior tests do not need synthetic sessions added to every legacy case. Dedicated P2-B security tests explicitly disable that marker and exercise the same middleware configuration used by the running application.
+
+## P2-B acceptance criteria
+
+P2-B passes only when all of the following are true:
+
+1. the private API session middleware is installed after Django authentication middleware;
+2. `/api/health/` remains available anonymously;
+3. `/api/auth/*` remains available for session bootstrap/login/logout/me behavior;
+4. anonymous requests to a private provider/read endpoint return JSON `401` before provider code runs;
+5. anonymous requests to a private recovery mutation endpoint return JSON `401` before recovery code runs;
+6. an authenticated Django session can reach private query endpoints;
+7. the `/app` layout performs a server-side `auth/me` session check before rendering the product shell;
+8. missing or invalid workspace sessions redirect to `/login`;
+9. `/demo`, `/feasibility`, `/login` and the public landing page remain outside the private `/app` layout;
+10. dedicated security regressions run with production-style auth enforcement enabled;
+11. P2 contract verifies both backend and frontend private boundaries;
+12. existing deterministic tests, Gate 7–11, P1, TypeScript and production build remain green;
+13. no DNS provider mutation, recovery planning, emergency continuity or AI decision logic changes in P2-B.
+
 ## Remaining P2 checkpoints
-
-### P2-B — Private workspace boundary
-
-- require an authenticated session for `/app/*` private product routes;
-- protect private backend read/evaluation endpoints;
-- preserve `/`, `/demo`, `/feasibility`, `/login` and auth bootstrap as intentional public surfaces;
-- make unauthenticated API calls fail with explicit `401` JSON instead of redirects/HTML.
 
 ### P2-C — RBAC model
 
