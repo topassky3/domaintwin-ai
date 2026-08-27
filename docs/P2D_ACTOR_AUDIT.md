@@ -69,7 +69,7 @@ The audit log remains the source of truth.
 
 ## Fingerprint invariant
 
-Actor identity is intentionally excluded from recovery and emergency fingerprint calculations.
+Actor identity is intentionally excluded from recovery and emergency fingerprint calculations. **The deterministic fingerprints remain unchanged when actor evidence is added.**
 
 Adding approval/execution evidence must never change:
 
