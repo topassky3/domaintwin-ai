@@ -150,7 +150,7 @@ class RoleAuthorizationTests(TestCase):
         self.assertEqual(required_capability("/api/incidents/1/", "GET"), READ)
 
     def test_role_assignment_command_replaces_prior_domaintwin_role(self):
-        self.viewer.groups.add(Group.objects.create(name=ROLE_GROUPS[OPERATOR]))
+        self.viewer.groups.add(Group.objects.get(name=ROLE_GROUPS[OPERATOR]))
         out = StringIO()
         call_command("set_domaintwin_role", "viewer", ADMIN, stdout=out)
         self.viewer.refresh_from_db()
