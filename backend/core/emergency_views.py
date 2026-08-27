@@ -8,10 +8,13 @@ from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from .actor_audit import (
+    apply_emergency_plan_as,
+    approve_emergency_plan_as,
+    emergency_actor_summary,
+)
 from .emergency import (
     EmergencyDomainError,
-    apply_emergency_plan,
-    approve_emergency_plan,
     check_candidate,
     create_emergency_plan,
     search_candidates,
@@ -89,6 +92,7 @@ def _serialize_plan(plan: EmergencyDomainPlan, *, include_audit: bool = True) ->
         "verifiedAt": plan.verified_at.isoformat() if plan.verified_at else None,
         "createdAt": plan.created_at.isoformat(),
         "updatedAt": plan.updated_at.isoformat(),
+        **emergency_actor_summary(plan),
     }
     if include_audit:
         payload["audit"] = [
@@ -230,7 +234,7 @@ def emergency_plan_approve(request, plan_id: int):
             EmergencyDomainPlan.objects.select_related("baseline_snapshot"),
             id=plan_id,
         )
-        return _json({"plan": _serialize_plan(approve_emergency_plan(plan))})
+        return _json({"plan": _serialize_plan(approve_emergency_plan_as(plan, user=request.user))})
     except Exception as exc:
         return _error_response(exc)
 
@@ -257,7 +261,7 @@ def emergency_plan_apply(request, plan_id: int):
                 status=400,
             )
         client = NameComClient()
-        result = apply_emergency_plan(plan, client=client)
+        result = apply_emergency_plan_as(plan, user=request.user, client=client)
         status = 200
         if result.status == EmergencyDomainPlan.Status.PARTIAL:
             status = 207
