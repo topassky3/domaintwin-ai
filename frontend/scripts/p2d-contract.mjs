@@ -13,6 +13,11 @@ const emergencyViews = read("backend/core/emergency_views.py");
 const actorTests = read("backend/core/test_actor_audit.py");
 const doc = read("docs/P2D_ACTOR_AUDIT.md");
 
+const recoveryExecutionEvent = actorAudit.indexOf("append_recovery_audit(\n            plan,\n            RECOVERY_EXECUTION_ACTOR_EVENT");
+const recoveryApplyCall = actorAudit.indexOf("return apply_recovery_plan(plan, client=client)");
+const emergencyExecutionEvent = actorAudit.indexOf("append_emergency_audit(\n            plan,\n            EMERGENCY_EXECUTION_ACTOR_EVENT");
+const emergencyApplyCall = actorAudit.indexOf("return apply_emergency_plan(plan, client=client)");
+
 const checks = [
   [actorAudit.includes('"userId": user.pk') && actorAudit.includes('"username": user.get_username()') && actorAudit.includes('"role": role'), "actor evidence captures stable user id, username and server-derived role"],
   [actorAudit.includes('RECOVERY_APPROVAL_ACTOR_EVENT = "APPROVAL_ACTOR_RECORDED"') && actorAudit.includes('RECOVERY_EXECUTION_ACTOR_EVENT = "EXECUTION_ACTOR_AUTHORIZED"'), "recovery approval and execution actor events are explicit"],
@@ -20,8 +25,8 @@ const checks = [
   [actorAudit.includes('"planFingerprint": result.plan_fingerprint') && actorAudit.includes('"targetFingerprint": result.target_fingerprint'), "recovery approval evidence binds actor to deterministic fingerprints"],
   [actorAudit.includes('"planFingerprint": plan.plan_fingerprint') && actorAudit.includes('"liveFingerprintBefore": plan.live_fingerprint_before'), "recovery execution evidence binds actor to preview source fingerprint"],
   [actorAudit.includes('"expectedFingerprint": result.expected_fingerprint') && actorAudit.includes('"sourceDomain": result.source_domain_name') && actorAudit.includes('"targetDomain": result.target_domain_name'), "emergency approval evidence binds actor to source, target and expected fingerprint"],
-  [actorAudit.indexOf("append_recovery_audit(\n            plan,\n            RECOVERY_EXECUTION_ACTOR_EVENT") < actorAudit.indexOf("return apply_recovery_plan(plan, client=client)"), "recovery executor is recorded before crossing provider apply boundary"],
-  [actorAudit.indexOf("append_emergency_audit(\n            plan,\n            EMERGENCY_EXECUTION_ACTOR_EVENT") < actorAudit.indexOf("return apply_emergency_plan(plan, client=client)"), "emergency executor is recorded before registration/DNS apply boundary"],
+  [recoveryExecutionEvent >= 0 && recoveryApplyCall >= 0 && recoveryExecutionEvent < recoveryApplyCall, "recovery executor is recorded before crossing provider apply boundary"],
+  [emergencyExecutionEvent >= 0 && emergencyApplyCall >= 0 && emergencyExecutionEvent < emergencyApplyCall, "emergency executor is recorded before registration/DNS apply boundary"],
   [recoveryViews.includes("approve_recovery_plan_as(plan, user=request.user)") && recoveryViews.includes("apply_recovery_plan_as(plan, user=request.user)"), "recovery endpoints derive actor from authenticated request user"],
   [emergencyViews.includes("approve_emergency_plan_as(plan, user=request.user)") && emergencyViews.includes("apply_emergency_plan_as(plan, user=request.user, client=client)"), "emergency endpoints derive actor from authenticated request user"],
   [recoveryViews.includes("**recovery_actor_summary(plan)") && emergencyViews.includes("**emergency_actor_summary(plan)"), "plan API responses expose audit-derived approved and execution actors"],
