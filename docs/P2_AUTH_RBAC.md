@@ -1,6 +1,6 @@
 # P2 — Authentication + RBAC
 
-P2 turns the hackathon-era private workspace into an authenticated product boundary while preserving the deterministic DomainTwin recovery model.
+P2 turns the hackathon-era private workspace into an authenticated and authorized product boundary while preserving the deterministic DomainTwin recovery model.
 
 ## Design principle
 
@@ -16,20 +16,7 @@ The recovery engine, deterministic DNS diff, fingerprint verification and provid
 
 ## P2-A — Session identity foundation
 
-P2-A uses Django's built-in authentication, session and CSRF middleware. No JWT package or external identity dependency is introduced.
-
-Browser flow:
-
-```text
-Browser
-  -> same-origin Next.js /api/domaintwin proxy
-  -> Django auth/csrf
-  -> Django auth/login
-  -> HttpOnly session cookie
-  -> auth/me proves current server-side identity
-```
-
-The Next.js proxy forwards browser cookies and the `X-CSRFToken` header to Django, and forwards Django `Set-Cookie` headers back to the browser.
+P2-A uses Django authentication, sessions and CSRF. The browser talks to Django through the same-origin Next.js proxy; provider and AI credentials never cross into browser code.
 
 Authentication endpoints:
 
@@ -40,13 +27,7 @@ POST /api/auth/logout/
 GET  /api/auth/me/
 ```
 
-The login endpoint accepts a username or a uniquely matching email address. Invalid or ambiguous identities fail closed.
-
-`Keep me signed in` controls Django session expiry. Without it, the session expires when the browser session ends. With it, the configured persistent session lifetime is used.
-
-## Cookie policy
-
-P2-A makes the cookie policy explicit:
+Cookie policy:
 
 ```text
 SESSION_COOKIE_HTTPONLY=True
@@ -55,112 +36,139 @@ CSRF_COOKIE_HTTPONLY=True
 CSRF_COOKIE_SAMESITE=Lax
 ```
 
-Local HTTP development keeps secure-cookie flags off. Production HTTPS must set:
-
-```text
-DJANGO_SECURE_COOKIES=1
-```
-
-The CSRF cookie is HttpOnly; JavaScript receives the current CSRF token through the explicit bootstrap endpoint instead of reading document cookies.
+Production HTTPS must enable `DJANGO_SECURE_COOKIES=1`.
 
 ## P2-A acceptance criteria
 
-P2-A passes only when all of the following are true:
-
 1. Django session, authentication and CSRF middleware remain enabled.
-2. `/api/auth/csrf/` returns a real Django CSRF token and creates the CSRF cookie.
-3. `/api/auth/login/` is CSRF-protected and accepts valid username/password credentials.
-4. a uniquely matching email address may also identify a user.
-5. invalid credentials return `401` without creating a session.
-6. `/api/auth/me/` returns `401` anonymously and the authenticated user after login.
-7. `/api/auth/logout/` is CSRF-protected and invalidates the session.
-8. default sessions expire at browser close; `remember=true` uses persistent expiry.
-9. the Next.js proxy forwards Cookie and X-CSRFToken upstream.
-10. the Next.js proxy forwards all upstream Set-Cookie values back to the browser.
-11. the login page performs real authentication and removes the hackathon workspace-bypass link.
-12. provider and AI credentials remain server-side.
-13. existing Gate 7/8/9/10/11 and P1 contracts remain green.
-14. the new P2 contract passes locally and in GitHub Actions.
-15. all backend core tests pass with the new authentication regressions included.
-16. no recovery, emergency, risk or AI decision behavior is changed in P2-A.
+2. CSRF bootstrap/login/logout/me use Django primitives and real CSRF enforcement.
+3. username or uniquely matching email can identify a user.
+4. invalid credentials fail with `401` and do not create a session.
+5. `remember=true` uses persistent expiry; default login expires with browser session.
+6. the Next.js proxy forwards Cookie, X-CSRFToken and every upstream Set-Cookie value.
+7. the login page performs real authentication and contains no hackathon workspace bypass.
+8. Gate 7–11, P1, backend tests, TypeScript and production build remain green.
 
 ## P2-B — Private workspace boundary
 
-P2-B closes the anonymous product surface at both layers.
-
-Backend boundary:
+Backend public allowlist:
 
 ```text
-PUBLIC
-  /api/health/
-  /api/auth/*
-
-AUTHENTICATED SESSION REQUIRED
-  /api/namecom/*
-  /api/twin/*
-  /api/risk/*
-  /api/monitor/*
-  /api/incidents/*
-  /api/ai/*
-  /api/recovery/*
-  /api/emergency/*
+/api/health/
+/api/auth/*
 ```
 
-`PrivateApiSessionMiddleware` runs after Django `AuthenticationMiddleware`, so authorization decisions use the server-side session identity. Anonymous private API requests receive explicit `401` JSON and are stopped before provider or recovery view logic executes. `OPTIONS` requests remain protocol-safe.
+All other DomainTwin APIs require an authenticated server-side session. Anonymous private API requests return JSON `401` before provider or recovery code executes.
 
-Frontend boundary:
-
-`frontend/src/app/app/layout.tsx` is dynamic and verifies the current Django session server-side through `/api/auth/me/` before rendering `ProductShell`. Missing, invalid or unavailable sessions redirect to `/login`.
-
-The public product explanation and guided demonstration remain intentionally separate from the private workspace.
-
-The historical pre-auth endpoint regression suite executes under a test-only marker so deterministic behavior tests do not need synthetic sessions added to every legacy case. Dedicated P2-B security tests explicitly disable that marker and exercise the same middleware configuration used by the running application.
+The `/app/*` layout verifies `/api/auth/me/` server-side before rendering the private product shell. `/`, `/demo`, `/feasibility` and `/login` remain public surfaces.
 
 ## P2-B acceptance criteria
 
-P2-B passes only when all of the following are true:
+1. `PrivateApiSessionMiddleware` runs after Django authentication middleware.
+2. health and auth bootstrap remain public.
+3. anonymous provider/read and mutation calls fail before view/provider logic.
+4. authenticated sessions can reach private query endpoints.
+5. `/app/*` is dynamic and redirects invalid sessions to `/login`.
+6. dedicated security regressions exercise the production-style boundary.
+7. deterministic DomainTwin behavior remains unchanged.
 
-1. the private API session middleware is installed after Django authentication middleware;
-2. `/api/health/` remains available anonymously;
-3. `/api/auth/*` remains available for session bootstrap/login/logout/me behavior;
-4. anonymous requests to a private provider/read endpoint return JSON `401` before provider code runs;
-5. anonymous requests to a private recovery mutation endpoint return JSON `401` before recovery code runs;
-6. an authenticated Django session can reach private query endpoints;
-7. the `/app` layout performs a server-side `auth/me` session check before rendering the product shell;
-8. missing or invalid workspace sessions redirect to `/login`;
-9. `/demo`, `/feasibility`, `/login` and the public landing page remain outside the private `/app` layout;
-10. dedicated security regressions run with production-style auth enforcement enabled;
-11. P2 contract verifies both backend and frontend private boundaries;
-12. existing deterministic tests, Gate 7–11, P1, TypeScript and production build remain green;
-13. no DNS provider mutation, recovery planning, emergency continuity or AI decision logic changes in P2-B.
+## P2-C — Server-side RBAC
+
+P2-C adds an explicit role hierarchy without introducing a custom user model or a tenancy model. Django Groups carry DomainTwin role assignment; authenticated users with no DomainTwin group default to the least-privileged `VIEWER` role. Django superusers resolve to `ADMIN`.
+
+```text
+VIEWER
+  read operational state and evidence
+
+OPERATOR
+  VIEWER + active evaluation, snapshot capture, AI generation,
+  recovery preview, emergency discovery/preview
+
+APPROVER
+  OPERATOR + declare known-good baseline and approve recovery/emergency plans
+
+ADMIN
+  APPROVER + apply recovery, execute emergency continuity,
+  direct DNS mutation and access administration
+```
+
+The role groups are:
+
+```text
+DomainTwin VIEWER
+DomainTwin OPERATOR
+DomainTwin APPROVER
+DomainTwin ADMIN
+```
+
+Role assignment is explicit:
+
+```text
+python manage.py set_domaintwin_role <username> VIEWER
+python manage.py set_domaintwin_role <username> OPERATOR
+python manage.py set_domaintwin_role <username> APPROVER
+python manage.py set_domaintwin_role <username> ADMIN
+```
+
+`/api/auth/me/` returns both the resolved role and the server-derived capability list. The private workspace displays that identity, but the frontend is never the authority: `RoleAuthorizationMiddleware` decides every private API request on the server.
+
+Important state-changing capabilities include:
+
+```text
+snapshot:create
+baseline:approve
+evaluate
+ai:generate
+recovery:preview
+recovery:approve
+recovery:apply
+emergency:discover
+emergency:preview
+emergency:approve
+emergency:apply
+dns:mutate
+access:manage
+```
+
+Unclassified future private mutations are fail-closed to `ADMIN` until they are explicitly added to the policy.
+
+## P2-C acceptance criteria
+
+P2-C passes only when all of the following are true:
+
+1. explicit `VIEWER`, `OPERATOR`, `APPROVER`, `ADMIN` roles exist server-side;
+2. role capability inheritance is deterministic and tested;
+3. authenticated users with no DomainTwin group resolve to `VIEWER`;
+4. superusers resolve to `ADMIN`;
+5. `RoleAuthorizationMiddleware` runs after session authentication and the private-session boundary;
+6. reads require `read`, active evaluation/probing requires operator capability, approvals require approver capability, and provider mutation/apply operations require admin capability;
+7. known-good baseline selection requires approver authority;
+8. direct name.com DNS POST/PUT/PATCH/DELETE requires `dns:mutate`;
+9. recovery/emergency PREVIEW, APPROVE and APPLY stages have separate capabilities;
+10. an insufficient role receives explicit JSON `403` containing the required capability and current role;
+11. denied requests are stopped before provider/recovery execution;
+12. unknown future private mutations fail closed to admin-only authorization;
+13. `/api/auth/me/` exposes role/capabilities derived by Django, not supplied by the browser;
+14. `set_domaintwin_role` can replace a user's DomainTwin role deterministically;
+15. the private shell displays authenticated username/role and supports real logout;
+16. dedicated RBAC tests verify viewer/operator/approver/admin allow/deny behavior;
+17. P2 contract, Gate 7–11, P1, backend regression, TypeScript and production build remain green;
+18. P2-C does not change deterministic DNS diff, recovery plan fingerprints, emergency verification or provider safety switches.
 
 ## Remaining P2 checkpoints
 
-### P2-C — RBAC model
-
-Introduce explicit product roles, initially:
-
-```text
-VIEWER   -> read operational state/evidence
-OPERATOR -> evaluate, create recovery previews, generate explanations
-APPROVER -> approve recovery/emergency plans
-ADMIN    -> apply provider mutations and manage access
-```
-
-Exact permissions will be encoded and tested server-side; the frontend must never be the authorization authority.
-
 ### P2-D — Recovery actor evidence
 
-- record who approved a plan;
-- record who applied a plan;
-- include actor identity in ordered audit events;
+- record who approved a recovery/emergency plan;
+- record who applied it;
+- include actor identity and role in ordered audit events;
 - preserve deterministic plan/evidence fingerprints.
 
 ### P2-E — End-to-end security regression
 
-- anonymous boundary tests;
-- role denial/allow matrix;
-- CSRF negative tests;
+- remove remaining private mutation CSRF exemptions safely;
+- negative CSRF tests for authenticated mutations;
+- complete role denial/allow matrix;
 - session logout/expiry behavior;
 - Gate 7–11/P1/P2 contracts;
 - clean-tree proof;
