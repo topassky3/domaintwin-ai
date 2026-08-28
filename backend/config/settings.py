@@ -55,6 +55,9 @@ NAMECOM_ALLOW_PRODUCTION_MUTATIONS = os.getenv("NAMECOM_ALLOW_PRODUCTION_MUTATIO
 NAMECOM_ALLOW_DOMAIN_REGISTRATION = os.getenv("NAMECOM_ALLOW_DOMAIN_REGISTRATION", "0") == "1"
 
 DOMAIN_HEALTH_TIMEOUT_SECONDS = float(os.getenv("DOMAIN_HEALTH_TIMEOUT_SECONDS", "4"))
+# P5 Monitoring Lite can run as a separate Django worker. The web process never
+# starts a scheduler implicitly; deployment chooses cron/Task Scheduler or --loop.
+DOMAIN_MONITOR_INTERVAL_SECONDS = int(os.getenv("DOMAIN_MONITOR_INTERVAL_SECONDS", "60"))
 
 # Evidence-based AI incident explanations. Disabled by default so core DNS detection
 # and recovery never depend on an external AI provider.
