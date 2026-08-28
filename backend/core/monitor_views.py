@@ -6,21 +6,10 @@ from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_http_methods
 
 from .health import UnsafeHealthTarget, check_domain_health
-from .incidents import (
-    correlate_incident,
-    record_health_observation,
-    unknown_destination_detected,
-)
-from .models import HealthObservation, Incident, KnownGoodSnapshot
+from .models import HealthObservation, Incident
+from .monitoring import evaluate_domain_state
 from .namecom import NameComAPIError, NameComClient
-from .risk import evaluate_risk
-from .tenant import (
-    TenantContextError,
-    require_snapshot_domain,
-    tenant_error_response,
-    tenant_scoped_queryset,
-)
-from .twin import diff_records, normalize_records, snapshot_fingerprint
+from .tenant import TenantContextError, tenant_error_response, tenant_scoped_queryset
 
 
 def _cors(response: JsonResponse) -> JsonResponse:
@@ -54,14 +43,6 @@ def _error_response(exc: Exception) -> JsonResponse:
             status=exc.status_code if 400 <= exc.status_code <= 599 else 502,
         )
     return _json({"error": {"message": str(exc), "status": 500}}, status=500)
-
-
-def _live_records(domain_name: str) -> list[dict]:
-    payload = NameComClient().list_records(domain_name)
-    records = payload.get("records") or []
-    if not isinstance(records, list):
-        records = list(records) if records else []
-    return records
 
 
 def _serialize_health(observation: HealthObservation) -> dict:
@@ -112,6 +93,8 @@ def domain_health(request, domain_name: str):
         return _json({})
     try:
         health = check_domain_health(domain_name)
+        from .incidents import record_health_observation
+
         observation = record_health_observation(health["domainName"], health)
         return _json({"health": _serialize_health(observation)})
     except Exception as exc:
@@ -123,55 +106,30 @@ def evaluate_domain(request, domain_name: str):
     if request.method == "OPTIONS":
         return _json({})
     try:
-        marker = get_object_or_404(
-            KnownGoodSnapshot.objects.select_related("snapshot"),
-            domain_name=domain_name,
+        evaluation = evaluate_domain_state(
+            domain_name,
+            client=NameComClient(),
+            health_checker=check_domain_health,
         )
-        baseline = require_snapshot_domain(marker.snapshot, domain_name)
-        live = normalize_records(_live_records(domain_name))
-        diff = diff_records(baseline.records, live)
-        live_fingerprint = snapshot_fingerprint(live)
-        drift_detected = any(
-            diff["summary"][state] > 0
-            for state in ("ADDED", "REMOVED", "MODIFIED")
-        )
-
-        health = check_domain_health(domain_name)
-        observation = record_health_observation(health["domainName"], health)
-        unknown_destination = unknown_destination_detected(baseline.records, diff)
-        risk = evaluate_risk(
-            diff,
-            http_health_failed=bool(health["availabilityFailed"]),
-            unknown_destination=unknown_destination,
-        )
-        state, incident, created = correlate_incident(
-            domain_name=domain_name,
-            baseline=baseline,
-            live_fingerprint=live_fingerprint,
-            diff=diff,
-            health=health,
-            observation=observation,
-            unknown_destination=unknown_destination,
-            risk=risk,
-        )
-
+        baseline = evaluation["baseline"]
+        incident = evaluation["incident"]
         return _json(
             {
                 "domainName": domain_name,
-                "state": state,
+                "state": evaluation["state"],
                 "baselineSnapshotId": baseline.id,
                 "baselineVersion": baseline.version,
                 "baselineFingerprint": baseline.fingerprint,
-                "liveFingerprint": live_fingerprint,
-                "driftDetected": drift_detected,
-                "diff": diff,
-                "health": _serialize_health(observation),
-                "unknownDestination": unknown_destination,
-                "risk": risk,
-                "incidentCreated": created,
+                "liveFingerprint": evaluation["liveFingerprint"],
+                "driftDetected": evaluation["driftDetected"],
+                "diff": evaluation["diff"],
+                "health": _serialize_health(evaluation["observation"]),
+                "unknownDestination": evaluation["unknownDestination"],
+                "risk": evaluation["risk"],
+                "incidentCreated": evaluation["incidentCreated"],
                 "incident": _serialize_incident(incident, include_timeline=True) if incident else None,
             },
-            status=201 if created else 200,
+            status=201 if evaluation["incidentCreated"] else 200,
         )
     except Exception as exc:
         return _error_response(exc)
@@ -197,6 +155,7 @@ def domain_monitor_status(request, domain_name: str):
         {
             "domainName": domain_name,
             "state": state,
+            "monitoringMode": "AUTOMATIC_LITE",
             "activeIncident": _serialize_incident(active) if active else None,
             "latestHealth": _serialize_health(latest_health) if latest_health else None,
         }
