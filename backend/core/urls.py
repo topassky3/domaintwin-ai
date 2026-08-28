@@ -10,6 +10,7 @@ from .auth_views import (
     auth_me,
     auth_organizations,
 )
+from .demo_views import demo_readiness
 from .emergency_views import (
     emergency_check,
     emergency_plan_apply,
@@ -56,6 +57,7 @@ urlpatterns = [
         name="auth-active-organization",
     ),
     path("alerts/", active_alerts, name="active-alerts"),
+    path("demo/readiness/", demo_readiness, name="demo-readiness"),
     path("namecom/status/", namecom_status, name="namecom-status"),
     path("namecom/domains/", namecom_domains, name="namecom-domains"),
     path("namecom/domains/<str:domain_name>/", namecom_domain, name="namecom-domain"),

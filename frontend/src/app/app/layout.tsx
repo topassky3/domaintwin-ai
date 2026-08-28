@@ -5,6 +5,7 @@ import { ProductShell } from "@/components/ProductShell";
 import type { AuthSession, AuthUser } from "@/lib/auth";
 import "./product.css";
 import "./p6.css";
+import "./p7.css";
 
 export const dynamic = "force-dynamic";
 
