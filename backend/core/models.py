@@ -4,6 +4,8 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 
 def canonical_domain_name(value: str) -> str:
@@ -30,6 +32,52 @@ class Organization(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class ProviderConnection(models.Model):
+    """Tenant-to-provider binding only; provider secrets remain server-side in env."""
+
+    class Provider(models.TextChoices):
+        NAMECOM = "name.com", "name.com"
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="provider_connections",
+    )
+    provider = models.CharField(max_length=32, choices=Provider.choices)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["organization_id", "provider"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "provider"],
+                name="unique_provider_connection_org_provider",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["organization", "provider", "is_active"],
+                name="provider_conn_org_active_idx",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.organization} → {self.provider}"
+
+
+@receiver(post_save, sender=Organization)
+def ensure_default_provider_connection(sender, instance, created, **kwargs):
+    """Hackathon default: every new tenant is bound to the single supported provider."""
+    if created:
+        ProviderConnection.objects.get_or_create(
+            organization=instance,
+            provider=ProviderConnection.Provider.NAMECOM,
+            defaults={"is_active": True},
+        )
 
 
 class Membership(models.Model):
