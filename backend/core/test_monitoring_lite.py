@@ -8,7 +8,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 
-from .models import ManagedDomain, Organization, ProviderConnection
+from .models import KnownGoodSnapshot, ManagedDomain, Organization, ProviderConnection
 from .monitoring import evaluate_domain_state, run_monitoring_cycle
 from .twin import create_snapshot, mark_known_good
 
@@ -58,10 +58,11 @@ class MonitoringLiteTests(TestCase):
         baseline = self._baseline(self.domain.name)
         provider = Mock()
         provider.list_records.return_value = {"records": self.records}
+        factory = Mock(return_value=provider)
 
         result = evaluate_domain_state(
             self.domain.name,
-            client=provider,
+            client_factory=factory,
             health_checker=healthy_result,
         )
 
@@ -70,6 +71,7 @@ class MonitoringLiteTests(TestCase):
         self.assertFalse(result["driftDetected"])
         self.assertFalse(result["incidentCreated"])
         self.assertIsNone(result["incident"])
+        factory.assert_called_once_with()
         provider.list_records.assert_called_once_with(self.domain.name)
 
     def test_cycle_checks_active_domain_and_skips_missing_baseline_before_provider(self):
@@ -123,6 +125,25 @@ class MonitoringLiteTests(TestCase):
         self.assertEqual(summary["checked"], 0)
         self.assertEqual(summary["skipped"], 1)
         self.assertEqual(summary["results"][0]["reason"], "PROVIDER_CONNECTION_REQUIRED")
+        factory.assert_not_called()
+
+    def test_corrupted_known_good_chain_fails_before_client_factory(self):
+        wrong_snapshot = create_snapshot("b.example", self.records)
+        KnownGoodSnapshot.objects.create(
+            domain_name=self.domain.name,
+            snapshot=wrong_snapshot,
+        )
+        factory = Mock()
+
+        summary = run_monitoring_cycle(
+            client_factory=factory,
+            health_checker=healthy_result,
+        )
+
+        self.assertEqual(summary["checked"], 0)
+        self.assertEqual(summary["failed"], 1)
+        self.assertEqual(summary["results"][0]["outcome"], "FAILED")
+        self.assertEqual(summary["results"][0]["errorType"], "Http404")
         factory.assert_not_called()
 
     def test_one_domain_provider_failure_does_not_stop_other_domains(self):
