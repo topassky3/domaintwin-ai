@@ -11,6 +11,7 @@ const tests = read("backend/core/test_tenant_security_regression.py");
 const tenant = read("backend/core/tenant.py");
 const twinViews = read("backend/core/twin_views.py");
 const monitorViews = read("backend/core/monitor_views.py");
+const monitoring = read("backend/core/monitoring.py");
 const riskViews = read("backend/core/risk_views.py");
 const recoveryViews = read("backend/core/recovery_views.py");
 const emergencyViews = read("backend/core/emergency_views.py");
@@ -27,7 +28,7 @@ const checks = [
   [tests.includes("test_corrupted_known_good_chain_fails_before_provider_across_evidence_flows") && tests.includes("test_corrupted_derived_chains_are_excluded_from_lists_and_object_ids"), "corrupted evidence chains are attacked before provider and list/object exposure"],
   [tenant.includes("require_snapshot_domain") && tenant.includes("F(root_lookup)"), "tenant core enforces exact same-domain baseline chain integrity"],
   [twinViews.includes("require_snapshot_domain") && twinViews.includes("isinstance(exc, Http404)"), "snapshot/diff views normalize corrupted or manipulated evidence to 404"],
-  [monitorViews.includes("require_snapshot_domain") && monitorViews.includes('baseline_snapshot__domain_name=F("domain_name")'), "monitoring validates baseline chains and filters inconsistent incidents"],
+  [monitoring.includes("require_snapshot_domain") && monitorViews.includes('baseline_snapshot__domain_name=F("domain_name")'), "monitoring validates baseline chains and filters inconsistent incidents"],
   [riskViews.includes("require_snapshot_domain"), "risk evaluation validates known-good baseline domain before provider work"],
   [recoveryViews.includes("require_snapshot_domain") && recoveryViews.includes("_consistent_recovery_rows"), "recovery preview/list/object paths enforce exact baseline and incident chain integrity"],
   [emergencyViews.includes("require_snapshot_domain") && emergencyViews.includes("_consistent_emergency_rows"), "emergency preview/list/object paths enforce exact source baseline integrity"],
