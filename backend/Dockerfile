@@ -10,9 +10,8 @@ COPY requirements.txt ./
 RUN python -m pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . .
-COPY ../deploy/backend-entrypoint.sh /usr/local/bin/domaintwin-entrypoint
-RUN chmod +x /usr/local/bin/domaintwin-entrypoint
+RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 8000
-ENTRYPOINT ["/usr/local/bin/domaintwin-entrypoint"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["web"]
