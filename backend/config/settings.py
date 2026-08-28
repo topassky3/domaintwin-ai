@@ -11,7 +11,7 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-domaintwin-change-me")
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if host.strip()]
 INSTALLED_APPS = ["django.contrib.admin","django.contrib.auth","django.contrib.contenttypes","django.contrib.sessions","django.contrib.messages","django.contrib.staticfiles","core"]
-MIDDLEWARE = ["django.middleware.security.SecurityMiddleware","django.contrib.sessions.middleware.SessionMiddleware","django.middleware.common.CommonMiddleware","django.middleware.csrf.CsrfViewMiddleware","django.contrib.auth.middleware.AuthenticationMiddleware","core.auth_middleware.PrivateApiSessionMiddleware","core.rbac.RoleAuthorizationMiddleware","core.tenant_middleware.TenantDomainBoundaryMiddleware","django.contrib.messages.middleware.MessageMiddleware","django.middleware.clickjacking.XFrameOptionsMiddleware"]
+MIDDLEWARE = ["django.middleware.security.SecurityMiddleware","django.contrib.sessions.middleware.SessionMiddleware","django.middleware.common.CommonMiddleware","django.middleware.csrf.CsrfViewMiddleware","django.contrib.auth.middleware.AuthenticationMiddleware","core.auth_middleware.PrivateApiSessionMiddleware","core.rbac.RoleAuthorizationMiddleware","core.tenant_middleware.TenantDomainBoundaryMiddleware","core.provider_middleware.ProviderConnectionBoundaryMiddleware","django.contrib.messages.middleware.MessageMiddleware","django.middleware.clickjacking.XFrameOptionsMiddleware"]
 ROOT_URLCONF = "config.urls"
 TEMPLATES = [{"BACKEND":"django.template.backends.django.DjangoTemplates","DIRS":[],"APP_DIRS":True,"OPTIONS":{"context_processors":["django.template.context_processors.request","django.contrib.auth.context_processors.auth","django.contrib.messages.context_processors.messages"]}}]
 WSGI_APPLICATION = "config.wsgi.application"
@@ -26,8 +26,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # The historical deterministic regression suite predates login enforcement. During
 # `manage.py test` it keeps exercising those paths without session setup, while
-# dedicated P2/P3 security tests override this to False and verify production
-# authentication, RBAC and tenant boundaries explicitly.
+# dedicated P2/P3/P4 security tests override this to False and verify production
+# authentication, RBAC, tenant and provider boundaries explicitly.
 DOMAIN_TWIN_TESTING = any(arg == "test" for arg in sys.argv)
 
 # P2 authentication uses Django's server-side session framework. The browser only
@@ -42,6 +42,8 @@ _SECURE_COOKIES = os.getenv("DJANGO_SECURE_COOKIES", "0") == "1"
 SESSION_COOKIE_SECURE = _SECURE_COOKIES
 CSRF_COOKIE_SECURE = _SECURE_COOKIES
 
+# P4: provider credentials are server-only. ProviderConnection stores only the
+# active-tenant binding; these values never belong in the database or browser API.
 NAMECOM_ENVIRONMENT = os.getenv("NAMECOM_ENVIRONMENT", "sandbox").strip().lower()
 NAMECOM_USERNAME = os.getenv("NAMECOM_USERNAME", "").strip()
 NAMECOM_API_TOKEN = os.getenv("NAMECOM_API_TOKEN", "").strip()

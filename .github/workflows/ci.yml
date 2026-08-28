@@ -118,6 +118,9 @@ jobs:
       - name: P3 multi-tenant contract
         run: npm run p3:contract
 
+      - name: P4 provider credentials contract
+        run: npm run p4:contract
+
       - name: TypeScript
         run: npm run typecheck
 

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import ManagedDomain, Membership, Organization
+from .models import ManagedDomain, Membership, Organization, ProviderConnection
 
 
 @admin.register(Organization)
@@ -25,3 +25,11 @@ class ManagedDomainAdmin(admin.ModelAdmin):
     list_filter = ("is_active", "organization")
     search_fields = ("name", "organization__name", "organization__slug")
     readonly_fields = ("id", "created_at", "updated_at")
+
+
+@admin.register(ProviderConnection)
+class ProviderConnectionAdmin(admin.ModelAdmin):
+    list_display = ("organization", "provider", "is_active", "created_at", "updated_at")
+    list_filter = ("provider", "is_active", "organization")
+    search_fields = ("organization__name", "organization__slug", "provider")
+    readonly_fields = ("created_at", "updated_at")
