@@ -2,6 +2,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from unittest.mock import patch
 
+from .models import ManagedDomain, Membership, Organization
+
 
 @override_settings(DOMAIN_TWIN_TESTING=False)
 class PrivateWorkspaceSessionTests(TestCase):
@@ -10,6 +12,19 @@ class PrivateWorkspaceSessionTests(TestCase):
             username="operator",
             email="operator@example.com",
             password="correct-horse-battery-staple",
+        )
+        self.organization = Organization.objects.create(
+            name="Private workspace test",
+            slug="private-workspace-test",
+        )
+        Membership.objects.create(
+            organization=self.organization,
+            user=self.user,
+            role=Membership.Role.VIEWER,
+        )
+        ManagedDomain.objects.create(
+            organization=self.organization,
+            name="example.com",
         )
 
     def test_health_remains_public(self):

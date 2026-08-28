@@ -1,4 +1,109 @@
+from __future__ import annotations
+
+import uuid
+
+from django.conf import settings
 from django.db import models
+
+
+def canonical_domain_name(value: str) -> str:
+    name = str(value or "").strip().rstrip(".").lower()
+    if not name:
+        raise ValueError("Domain name cannot be empty.")
+    if len(name) > 253:
+        raise ValueError("Domain name cannot exceed 253 characters.")
+    if any(character.isspace() for character in name):
+        raise ValueError("Domain name cannot contain whitespace.")
+    return name
+
+
+class Organization(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=160)
+    slug = models.SlugField(max_length=80, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "slug"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class Membership(models.Model):
+    class Role(models.TextChoices):
+        VIEWER = "VIEWER", "Viewer"
+        OPERATOR = "OPERATOR", "Operator"
+        APPROVER = "APPROVER", "Approver"
+        ADMIN = "ADMIN", "Admin"
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="memberships",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="domaintwin_memberships",
+    )
+    role = models.CharField(max_length=16, choices=Role.choices, default=Role.VIEWER)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["organization_id", "user_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "user"],
+                name="unique_membership_user_org",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    role__in=("VIEWER", "OPERATOR", "APPROVER", "ADMIN")
+                ),
+                name="membership_role_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "is_active"], name="membership_user_active_idx"),
+            models.Index(fields=["organization", "is_active"], name="membership_org_active_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user} @ {self.organization} ({self.role})"
+
+
+class ManagedDomain(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.PROTECT,
+        related_name="managed_domains",
+    )
+    name = models.CharField(max_length=253, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["organization_id", "name"]
+        indexes = [
+            models.Index(
+                fields=["organization", "is_active"],
+                name="managed_domain_org_active_idx",
+            )
+        ]
+
+    def save(self, *args, **kwargs):
+        self.name = canonical_domain_name(self.name)
+        return super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return self.name
 
 
 class DomainSnapshot(models.Model):

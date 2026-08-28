@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.db.models import F
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_http_methods
@@ -13,6 +14,12 @@ from .incidents import (
 from .models import HealthObservation, Incident, KnownGoodSnapshot
 from .namecom import NameComAPIError, NameComClient
 from .risk import evaluate_risk
+from .tenant import (
+    TenantContextError,
+    require_snapshot_domain,
+    tenant_error_response,
+    tenant_scoped_queryset,
+)
 from .twin import diff_records, normalize_records, snapshot_fingerprint
 
 
@@ -28,6 +35,8 @@ def _json(data: dict, status: int = 200) -> JsonResponse:
 
 
 def _error_response(exc: Exception) -> JsonResponse:
+    if isinstance(exc, TenantContextError):
+        return _cors(tenant_error_response(exc))
     if isinstance(exc, UnsafeHealthTarget):
         return _json({"error": {"message": str(exc), "status": 400}}, status=400)
     if isinstance(exc, Http404):
@@ -114,8 +123,11 @@ def evaluate_domain(request, domain_name: str):
     if request.method == "OPTIONS":
         return _json({})
     try:
-        marker = get_object_or_404(KnownGoodSnapshot, domain_name=domain_name)
-        baseline = marker.snapshot
+        marker = get_object_or_404(
+            KnownGoodSnapshot.objects.select_related("snapshot"),
+            domain_name=domain_name,
+        )
+        baseline = require_snapshot_domain(marker.snapshot, domain_name)
         live = normalize_records(_live_records(domain_name))
         diff = diff_records(baseline.records, live)
         live_fingerprint = snapshot_fingerprint(live)
@@ -169,7 +181,11 @@ def evaluate_domain(request, domain_name: str):
 def domain_monitor_status(request, domain_name: str):
     if request.method == "OPTIONS":
         return _json({})
-    active = Incident.objects.filter(domain_name=domain_name, status=Incident.Status.OPEN).first()
+    active = Incident.objects.filter(
+        domain_name=domain_name,
+        status=Incident.Status.OPEN,
+        baseline_snapshot__domain_name=F("domain_name"),
+    ).first()
     latest_health = HealthObservation.objects.filter(domain_name=domain_name).first()
     if active:
         state = "INCIDENT"
@@ -191,7 +207,10 @@ def domain_monitor_status(request, domain_name: str):
 def domain_incidents(request, domain_name: str):
     if request.method == "OPTIONS":
         return _json({})
-    rows = Incident.objects.filter(domain_name=domain_name)
+    rows = Incident.objects.filter(
+        domain_name=domain_name,
+        baseline_snapshot__domain_name=F("domain_name"),
+    )
     return _json(
         {
             "domainName": domain_name,
@@ -206,7 +225,12 @@ def incident_detail(request, incident_id: int):
     if request.method == "OPTIONS":
         return _json({})
     try:
-        incident = get_object_or_404(Incident, id=incident_id)
+        rows = tenant_scoped_queryset(
+            request,
+            Incident.objects.select_related("baseline_snapshot"),
+            domain_lookups=("domain_name", "baseline_snapshot__domain_name"),
+        )
+        incident = get_object_or_404(rows, id=incident_id)
         return _json({"incident": _serialize_incident(incident, include_timeline=True)})
     except Exception as exc:
         return _error_response(exc)

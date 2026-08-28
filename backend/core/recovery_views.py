@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from django.db.models import F, Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_http_methods
@@ -14,6 +15,12 @@ from .actor_audit import (
 from .models import Incident, KnownGoodSnapshot, RecoveryPlan
 from .namecom import NameComAPIError, NameComClient
 from .recovery import RecoveryError, create_recovery_plan
+from .tenant import (
+    TenantContextError,
+    require_snapshot_domain,
+    tenant_error_response,
+    tenant_scoped_queryset,
+)
 
 
 def _cors(response: JsonResponse) -> JsonResponse:
@@ -28,6 +35,8 @@ def _json(data: dict, status: int = 200) -> JsonResponse:
 
 
 def _error_response(exc: Exception) -> JsonResponse:
+    if isinstance(exc, TenantContextError):
+        return _cors(tenant_error_response(exc))
     if isinstance(exc, RecoveryError):
         return _json(
             {"error": {"message": str(exc), "status": exc.status_code}},
@@ -99,6 +108,18 @@ def _serialize_plan(plan: RecoveryPlan, *, include_audit: bool = True) -> dict:
     return payload
 
 
+def _consistent_recovery_rows(queryset):
+    return queryset.filter(
+        baseline_snapshot__domain_name=F("domain_name")
+    ).filter(
+        Q(incident__isnull=True)
+        | Q(
+            incident__domain_name=F("domain_name"),
+            incident__baseline_snapshot__domain_name=F("domain_name"),
+        )
+    )
+
+
 def _current_baseline_and_incident(domain_name: str):
     incident = (
         Incident.objects.filter(domain_name=domain_name, status=Incident.Status.OPEN)
@@ -106,12 +127,28 @@ def _current_baseline_and_incident(domain_name: str):
         .first()
     )
     if incident:
-        return incident.baseline_snapshot, incident
+        baseline = require_snapshot_domain(incident.baseline_snapshot, domain_name)
+        return baseline, incident
     marker = get_object_or_404(
         KnownGoodSnapshot.objects.select_related("snapshot"),
         domain_name=domain_name,
     )
-    return marker.snapshot, None
+    return require_snapshot_domain(marker.snapshot, domain_name), None
+
+
+def _tenant_plan_rows(request):
+    rows = _consistent_recovery_rows(
+        RecoveryPlan.objects.select_related(
+            "baseline_snapshot",
+            "incident",
+            "incident__baseline_snapshot",
+        )
+    )
+    return tenant_scoped_queryset(
+        request,
+        rows,
+        domain_lookups=("domain_name", "baseline_snapshot__domain_name"),
+    )
 
 
 @require_http_methods(["GET", "POST", "OPTIONS"])
@@ -120,9 +157,12 @@ def domain_recovery_plans(request, domain_name: str):
         return _json({})
     try:
         if request.method == "GET":
-            rows = RecoveryPlan.objects.filter(domain_name=domain_name).select_related(
-                "baseline_snapshot",
-                "incident",
+            rows = _consistent_recovery_rows(
+                RecoveryPlan.objects.filter(domain_name=domain_name).select_related(
+                    "baseline_snapshot",
+                    "incident",
+                    "incident__baseline_snapshot",
+                )
             )
             return _json(
                 {
@@ -160,10 +200,7 @@ def recovery_plan_detail(request, plan_id: int):
     if request.method == "OPTIONS":
         return _json({})
     try:
-        plan = get_object_or_404(
-            RecoveryPlan.objects.select_related("baseline_snapshot", "incident"),
-            id=plan_id,
-        )
+        plan = get_object_or_404(_tenant_plan_rows(request), id=plan_id)
         return _json({"plan": _serialize_plan(plan)})
     except Exception as exc:
         return _error_response(exc)
@@ -185,11 +222,12 @@ def recovery_plan_approve(request, plan_id: int):
                 },
                 status=400,
             )
-        plan = get_object_or_404(
-            RecoveryPlan.objects.select_related("baseline_snapshot", "incident"),
-            id=plan_id,
+        plan = get_object_or_404(_tenant_plan_rows(request), id=plan_id)
+        plan = approve_recovery_plan_as(
+            plan,
+            user=request.user,
+            membership=getattr(request, "domaintwin_membership", None),
         )
-        plan = approve_recovery_plan_as(plan, user=request.user)
         return _json({"plan": _serialize_plan(plan)})
     except ValueError as exc:
         return _json({"error": {"message": str(exc), "status": 400}}, status=400)
@@ -202,11 +240,12 @@ def recovery_plan_apply(request, plan_id: int):
     if request.method == "OPTIONS":
         return _json({})
     try:
-        plan = get_object_or_404(
-            RecoveryPlan.objects.select_related("baseline_snapshot", "incident"),
-            id=plan_id,
+        plan = get_object_or_404(_tenant_plan_rows(request), id=plan_id)
+        plan = apply_recovery_plan_as(
+            plan,
+            user=request.user,
+            membership=getattr(request, "domaintwin_membership", None),
         )
-        plan = apply_recovery_plan_as(plan, user=request.user)
         plan.refresh_from_db()
         status = 200
         if plan.status == RecoveryPlan.Status.PARTIAL:

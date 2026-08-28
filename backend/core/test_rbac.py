@@ -9,6 +9,7 @@ from django.contrib.auth.models import Group
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 
+from .models import ManagedDomain, Membership, Organization
 from .rbac import (
     ADMIN,
     APPROVER,
@@ -46,6 +47,28 @@ class RoleAuthorizationTests(TestCase):
         ):
             group = Group.objects.create(name=ROLE_GROUPS[role])
             user.groups.add(group)
+
+        self.organization = Organization.objects.create(
+            name="RBAC regression tenant",
+            slug="rbac-regression",
+        )
+        for user, role in (
+            (self.viewer, Membership.Role.VIEWER),
+            (self.operator, Membership.Role.OPERATOR),
+            (self.approver, Membership.Role.APPROVER),
+            (self.admin, Membership.Role.ADMIN),
+            (self.superuser, Membership.Role.ADMIN),
+        ):
+            Membership.objects.create(
+                organization=self.organization,
+                user=user,
+                role=role,
+            )
+        for domain_name in ("example.com", "missing.example"):
+            ManagedDomain.objects.create(
+                organization=self.organization,
+                name=domain_name,
+            )
 
     def test_authenticated_user_without_group_defaults_to_viewer(self):
         self.assertEqual(role_for_user(self.viewer), VIEWER)

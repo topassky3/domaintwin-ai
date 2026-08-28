@@ -1,9 +1,12 @@
 import json
 
+from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 
+from .models import ManagedDomain, canonical_domain_name
 from .namecom import NameComAPIError, NameComClient
+from .tenant import TenantContextError, resolve_active_membership, tenant_error_response
 
 
 ALLOWED_RECORD_FIELDS = {"type", "host", "answer", "ttl", "priority"}
@@ -81,6 +84,17 @@ def _safe_domain_payload(payload: dict) -> dict:
     return {key: payload[key] for key in SAFE_DOMAIN_FIELDS if key in payload}
 
 
+def _domain_name_from_payload(payload: dict) -> str | None:
+    for key in ("domainName", "domain", "name"):
+        value = payload.get(key)
+        if value:
+            try:
+                return canonical_domain_name(str(value))
+            except ValueError:
+                return None
+    return None
+
+
 def health(request):
     return _json({"status": "ok", "service": "domaintwin-api"})
 
@@ -111,8 +125,32 @@ def namecom_domains(request):
     if request.method == "OPTIONS":
         return _json({})
     try:
+        membership = resolve_active_membership(request)
+    except TenantContextError as exc:
+        return tenant_error_response(exc)
+
+    managed_names = set(
+        ManagedDomain.objects.filter(
+            organization=membership.organization,
+            is_active=True,
+        ).values_list("name", flat=True)
+    )
+    if not managed_names:
+        return _json({"environment": settings.NAMECOM_ENVIRONMENT, "domains": []})
+
+    try:
         client = _client()
-        return _json({"environment": client.environment, **client.list_domains()})
+        payload = client.list_domains()
+        raw_domains = payload.get("domains") or []
+        if not isinstance(raw_domains, list):
+            raw_domains = list(raw_domains) if raw_domains else []
+
+        domains = [
+            _safe_domain_payload(row)
+            for row in raw_domains
+            if isinstance(row, dict) and _domain_name_from_payload(row) in managed_names
+        ]
+        return _json({"environment": client.environment, "domains": domains})
     except Exception as exc:
         return _error_response(exc)
 

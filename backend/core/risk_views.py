@@ -7,6 +7,7 @@ from django.views.decorators.http import require_http_methods
 from .models import KnownGoodSnapshot
 from .namecom import NameComAPIError, NameComClient
 from .risk import evaluate_risk
+from .tenant import require_snapshot_domain
 from .twin import diff_records, normalize_records, snapshot_fingerprint
 
 
@@ -76,8 +77,11 @@ def domain_risk(request, domain_name: str):
             field="unknown_destination",
         )
 
-        marker = get_object_or_404(KnownGoodSnapshot, domain_name=domain_name)
-        baseline = marker.snapshot
+        marker = get_object_or_404(
+            KnownGoodSnapshot.objects.select_related("snapshot"),
+            domain_name=domain_name,
+        )
+        baseline = require_snapshot_domain(marker.snapshot, domain_name)
         live = normalize_records(_live_records(domain_name))
         diff = diff_records(baseline.records, live)
 

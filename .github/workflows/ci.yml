@@ -115,6 +115,9 @@ jobs:
       - name: P2 auth contract
         run: npm run p2:contract
 
+      - name: P3 multi-tenant contract
+        run: npm run p3:contract
+
       - name: TypeScript
         run: npm run typecheck
 

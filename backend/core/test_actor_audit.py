@@ -17,7 +17,14 @@ from .actor_audit import (
     approve_recovery_plan_as,
 )
 from .emergency import create_emergency_plan
-from .models import DomainSnapshot, KnownGoodSnapshot, RecoveryPlan
+from .models import (
+    DomainSnapshot,
+    KnownGoodSnapshot,
+    ManagedDomain,
+    Membership,
+    Organization,
+    RecoveryPlan,
+)
 from .rbac import ADMIN, APPROVER, ROLE_GROUPS
 from .recovery import create_recovery_plan
 from .test_emergency import FakeEmergencyClient
@@ -40,6 +47,25 @@ class ActorAuditEvidenceTests(TestCase):
         self.approver.groups.add(approver_group)
         self.other_approver.groups.add(approver_group)
         self.admin.groups.add(admin_group)
+
+        self.organization = Organization.objects.create(
+            name="Actor audit tenant",
+            slug="actor-audit-tenant",
+        )
+        for user, role in (
+            (self.approver, Membership.Role.APPROVER),
+            (self.other_approver, Membership.Role.APPROVER),
+            (self.admin, Membership.Role.ADMIN),
+        ):
+            Membership.objects.create(
+                organization=self.organization,
+                user=user,
+                role=role,
+            )
+        ManagedDomain.objects.create(
+            organization=self.organization,
+            name=self.domain,
+        )
 
         baseline_records = [dns_record(None, "A", "www", "203.0.113.10")]
         normalized = normalize_records(baseline_records)

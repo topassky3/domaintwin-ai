@@ -1,12 +1,21 @@
 export type DomainTwinRole = "VIEWER" | "OPERATOR" | "APPROVER" | "ADMIN";
 
+export interface OrganizationMembership {
+  organizationId: string;
+  organizationSlug: string;
+  organizationName: string;
+  role: DomainTwinRole;
+  membershipActive: boolean;
+  organizationActive: boolean;
+}
+
 export interface AuthUser {
   id: number;
   username: string;
   email: string;
   isStaff: boolean;
   isSuperuser: boolean;
-  role: DomainTwinRole;
+  role: DomainTwinRole | null;
   capabilities: string[];
 }
 
@@ -14,6 +23,15 @@ export interface AuthSession {
   authenticated: boolean;
   user?: AuthUser;
   remember?: boolean;
+  activeOrganization?: OrganizationMembership | null;
+  selectionRequired?: boolean;
+  tenantErrorCode?: string | null;
+}
+
+export interface OrganizationDirectory {
+  organizations: OrganizationMembership[];
+  activeOrganization: OrganizationMembership | null;
+  selectionRequired: boolean;
 }
 
 interface ApiErrorShape {
@@ -71,8 +89,6 @@ export async function signIn(
   const payload = await parseJson(response);
   if (!response.ok) throw new Error(messageFor(response, payload));
 
-  // Django rotates the CSRF secret when authentication succeeds. Force the next
-  // mutation to bootstrap a token that belongs to the authenticated session.
   csrfTokenCache = null;
   return payload as AuthSession;
 }
@@ -86,6 +102,38 @@ export async function currentSession(): Promise<AuthSession> {
   const payload = await parseJson(response);
   if (!response.ok) throw new Error(messageFor(response, payload));
   return payload as AuthSession;
+}
+
+export async function listOrganizations(): Promise<OrganizationDirectory> {
+  const response = await fetch("/api/domaintwin/auth/organizations/", {
+    method: "GET",
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  const payload = await parseJson(response);
+  if (!response.ok) throw new Error(messageFor(response, payload));
+  return payload as OrganizationDirectory;
+}
+
+export async function selectActiveOrganization(
+  organizationId: string,
+): Promise<OrganizationMembership> {
+  const csrfToken = await getCsrfToken(true);
+  const response = await fetch("/api/domaintwin/auth/active-organization/", {
+    method: "POST",
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": csrfToken,
+    },
+    body: JSON.stringify({ organizationId }),
+  });
+  const payload = await parseJson(response) as { activeOrganization?: OrganizationMembership } | null;
+  if (!response.ok || !payload?.activeOrganization) {
+    throw new Error(messageFor(response, payload));
+  }
+  return payload.activeOrganization;
 }
 
 export async function signOut(): Promise<void> {

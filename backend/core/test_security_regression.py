@@ -7,12 +7,13 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.test import Client, TestCase, override_settings
 
+from .models import ManagedDomain, Membership, Organization
 from .rbac import ADMIN, APPROVER, OPERATOR, ROLE_GROUPS
 
 
 @override_settings(DOMAIN_TWIN_TESTING=False)
 class EndToEndSecurityRegressionTests(TestCase):
-    """Exercise the production authentication + RBAC + CSRF boundary together."""
+    """Exercise production authentication + RBAC + CSRF + tenant boundary together."""
 
     def setUp(self):
         User = get_user_model()
@@ -28,6 +29,27 @@ class EndToEndSecurityRegressionTests(TestCase):
         self.operator.groups.add(groups[OPERATOR])
         self.approver.groups.add(groups[APPROVER])
         self.admin.groups.add(groups[ADMIN])
+
+        self.organization = Organization.objects.create(
+            name="Security regression tenant",
+            slug="security-regression",
+        )
+        for user, role in (
+            (self.viewer, Membership.Role.VIEWER),
+            (self.operator, Membership.Role.OPERATOR),
+            (self.approver, Membership.Role.APPROVER),
+            (self.admin, Membership.Role.ADMIN),
+        ):
+            Membership.objects.create(
+                organization=self.organization,
+                user=user,
+                role=role,
+            )
+        for domain_name in ("example.com", "missing.example"):
+            ManagedDomain.objects.create(
+                organization=self.organization,
+                name=domain_name,
+            )
 
     def _client_for(self, user) -> Client:
         client = Client(enforce_csrf_checks=True)
