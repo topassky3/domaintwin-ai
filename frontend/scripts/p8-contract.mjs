@@ -20,11 +20,18 @@ const ci = read(".github/workflows/ci.yml");
 const doc = read("docs/P8_DEPLOY.md");
 
 const serviceBlock = (name) => {
+  const lines = compose.split("\n");
   const marker = `  ${name}:`;
-  const start = compose.indexOf(marker);
+  const start = lines.findIndex((line) => line === marker);
   if (start < 0) return "";
-  const next = compose.indexOf("\n  ", start + marker.length);
-  return next < 0 ? compose.slice(start) : compose.slice(start, next);
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^  [A-Za-z0-9_-]+:\s*$/.test(lines[index])) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join("\n");
 };
 
 const frontendService = serviceBlock("frontend");
