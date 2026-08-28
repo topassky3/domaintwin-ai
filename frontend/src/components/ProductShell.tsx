@@ -15,6 +15,30 @@ const nav = [
   ["ED", "Emergency", "/app/emergency"],
 ] as const;
 
+type RecoveryAlert = {
+  incidentId: number;
+  domainName: string;
+  severity: string;
+  score: number;
+  factorCount: number;
+  openedAt: string;
+  lastSeenAt: string;
+  evidenceFingerprint: string;
+  recommendedAction: "OPEN_RECOVERY" | string;
+  recoveryPlan: {
+    id: number;
+    status: string;
+    operationCount: number;
+    updatedAt: string;
+  } | null;
+};
+
+type AlertsResponse = {
+  activeCount: number;
+  highestSeverity: string | null;
+  alerts: RecoveryAlert[];
+};
+
 export function ProductShell({ children, user }: { children: ReactNode; user: AuthUser }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -28,6 +52,7 @@ export function ProductShell({ children, user }: { children: ReactNode; user: Au
   const [activeOrganization, setActiveOrganization] = useState<OrganizationMembership | null>(null);
   const [selectingOrganization, setSelectingOrganization] = useState(false);
   const [organizationError, setOrganizationError] = useState<string | null>(null);
+  const [alerts, setAlerts] = useState<RecoveryAlert[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,12 +117,33 @@ export function ProductShell({ children, user }: { children: ReactNode; user: Au
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshAlerts() {
+      try {
+        const response = await api<AlertsResponse>("alerts/");
+        if (!cancelled) setAlerts(response.alerts ?? []);
+      } catch {
+        if (!cancelled) setAlerts([]);
+      }
+    }
+
+    void refreshAlerts();
+    const timer = setInterval(() => void refreshAlerts(), 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
   const activeDomain = useMemo(() => {
     const match = pathname.match(/^\/app\/domains\/([^/]+)/);
     if (match) return decodeURIComponent(match[1]);
     return domains[0] ?? null;
   }, [pathname, domains]);
 
+  const topAlert = alerts[0] ?? null;
   const providerReachable = Boolean(provider) || domainsReachable;
   const environment = String(provider?.environment ?? fallbackEnvironment ?? "UNKNOWN").toUpperCase();
   const environmentClass = environment === "PRODUCTION"
@@ -159,6 +205,7 @@ export function ProductShell({ children, user }: { children: ReactNode; user: Au
             return (
               <Link className={active ? "product-nav-link is-active" : "product-nav-link"} href={href} key={href}>
                 <span>{icon}</span>{label}
+                {href === "/app/incidents" && alerts.length > 0 ? <b className="product-nav-count">{alerts.length}</b> : null}
               </Link>
             );
           })}
@@ -217,6 +264,11 @@ export function ProductShell({ children, user }: { children: ReactNode; user: Au
                 ))}
               </select>
             ) : null}
+            {topAlert ? (
+              <Link className="product-state-badge product-state-badge--critical" href={`/app/incidents/${topAlert.incidentId}`}>
+                ALERTS {alerts.length}
+              </Link>
+            ) : null}
             <span className={`product-env product-env--large ${environmentClass}`}>{environment}</span>
             <span className="product-connection is-online" title={`Capabilities: ${user.capabilities.join(", ")}`}>
               <i /> {user.role ?? "SELECT TENANT"} · {user.username}
@@ -230,6 +282,24 @@ export function ProductShell({ children, user }: { children: ReactNode; user: Au
             </button>
           </div>
         </header>
+
+        {topAlert ? (
+          <div className="p6-alert-strip" role="status" aria-live="polite">
+            <div className="p6-alert-copy">
+              <span>{topAlert.severity}</span>
+              <div>
+                <strong>{topAlert.domainName} · active incident #{topAlert.incidentId} · risk {topAlert.score}/100</strong>
+                <small>{topAlert.factorCount} deterministic factor(s) · {topAlert.recoveryPlan ? `recovery ${topAlert.recoveryPlan.status}` : "recovery preview not created yet"}</small>
+              </div>
+            </div>
+            <div className="p6-alert-actions">
+              {alerts.length > 1 ? <span className="p6-alert-more">+{alerts.length - 1} more</span> : null}
+              <Link className="button button--secondary" href={`/app/incidents/${topAlert.incidentId}`}>Evidence</Link>
+              <Link className="button button--primary" href={`/app/recovery?domain=${encodeURIComponent(topAlert.domainName)}&incident=${topAlert.incidentId}`}>Open recovery</Link>
+            </div>
+          </div>
+        ) : null}
+
         <main className="product-content">{children}</main>
       </div>
     </div>

@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .ai_views import incident_explanation
+from .alert_views import active_alerts
 from .auth_views import (
     auth_active_organization,
     auth_csrf,
@@ -54,6 +55,7 @@ urlpatterns = [
         auth_active_organization,
         name="auth-active-organization",
     ),
+    path("alerts/", active_alerts, name="active-alerts"),
     path("namecom/status/", namecom_status, name="namecom-status"),
     path("namecom/domains/", namecom_domains, name="namecom-domains"),
     path("namecom/domains/<str:domain_name>/", namecom_domain, name="namecom-domain"),

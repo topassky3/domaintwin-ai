@@ -9,6 +9,7 @@ import {
   domainNameOf,
   encodeDomain,
   formatDate,
+  MonitorStatus,
   NameComStatus,
   RecoveryOperation,
   RecoveryPlan,
@@ -21,6 +22,13 @@ type LoadState<T> = {
   loading: boolean;
   reload: () => void;
 };
+
+type RecoveryDashboardProps = {
+  initialDomain?: string;
+  initialIncidentId?: number | null;
+};
+
+const RECOVERY_STEPS = ["DETECTED", "PREVIEW", "APPROVED", "APPLY", "VERIFIED"] as const;
 
 function useEndpoint<T>(path: string | null): LoadState<T> {
   const [data, setData] = useState<T | null>(null);
@@ -135,7 +143,17 @@ function RecoveryOperations({ plan }: { plan: RecoveryPlan }) {
   );
 }
 
-export function RecoveryDashboard() {
+function recoveryStepIndex(plan: RecoveryPlan | null, incidentId: number | null): number {
+  if (!plan) return incidentId ? 0 : -1;
+  const status = String(plan.status).toUpperCase();
+  if (status === "PREVIEW") return 1;
+  if (status === "APPROVED") return 2;
+  if (status === "APPLYING" || status === "PARTIAL" || status === "FAILED" || status === "STALE") return 3;
+  if (status === "RECOVERED") return 4;
+  return 1;
+}
+
+export function RecoveryDashboard({ initialDomain = "", initialIncidentId = null }: RecoveryDashboardProps) {
   const provider = useEndpoint<NameComStatus>("namecom/status/");
   const domains = useEndpoint<DomainsResponse>("namecom/domains/");
   const names = useMemo(
@@ -153,10 +171,17 @@ export function RecoveryDashboard() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [confirmMutation, setConfirmMutation] = useState(false);
 
   useEffect(() => {
-    if (!selectedDomain && names.length) setSelectedDomain(names[0]);
-  }, [names, selectedDomain]);
+    if (!selectedDomain && names.length) {
+      setSelectedDomain(initialDomain && names.includes(initialDomain) ? initialDomain : names[0]);
+    }
+  }, [initialDomain, names, selectedDomain]);
+
+  const monitor = useEndpoint<MonitorStatus>(
+    selectedDomain ? `monitor/domains/${encodeDomain(selectedDomain)}/status/` : null,
+  );
 
   useEffect(() => {
     if (!names.length) {
@@ -212,6 +237,7 @@ export function RecoveryDashboard() {
   );
 
   useEffect(() => {
+    setConfirmMutation(false);
     if (!activeSummary) {
       setActivePlan(null);
       setDetailError(null);
@@ -246,6 +272,7 @@ export function RecoveryDashboard() {
     setPlans((current) => [plan, ...current.filter((item) => item.id !== plan.id)]);
     setSelectedPlanId(plan.id);
     setActivePlan(plan);
+    setConfirmMutation(false);
   }
 
   async function createPreview() {
@@ -284,6 +311,11 @@ export function RecoveryDashboard() {
 
   async function apply() {
     if (!activePlan) return;
+    const verificationOnly = activePlan.operationCount === 0;
+    if (!verificationOnly && !confirmMutation) {
+      setActionError("Confirm the DNS mutation boundary before applying this recovery plan.");
+      return;
+    }
     setBusy("apply");
     setActionError(null);
     try {
@@ -291,6 +323,7 @@ export function RecoveryDashboard() {
         method: "POST",
       });
       upsert(response.plan);
+      monitor.reload();
     } catch (reason) {
       setActionError(reason instanceof Error ? reason.message : "Recovery apply failed");
     } finally {
@@ -305,6 +338,9 @@ export function RecoveryDashboard() {
     actualFingerprint?: string;
   } | undefined;
   const verificationOnly = Boolean(activePlan && activePlan.operationCount === 0);
+  const contextIncidentId = monitor.data?.activeIncident?.id ?? initialIncidentId ?? activePlan?.incidentId ?? null;
+  const stepIndex = recoveryStepIndex(activePlan, contextIncidentId);
+  const problemState = Boolean(activePlan && ["PARTIAL", "FAILED", "STALE"].includes(String(activePlan.status).toUpperCase()));
 
   return (
     <>
@@ -317,6 +353,30 @@ export function RecoveryDashboard() {
         <div className="product-heading-actions">
           <span className={environment === "PRODUCTION" ? "product-env product-env--production product-env--large" : "product-env product-env--sandbox product-env--large"}>{environment}</span>
         </div>
+      </div>
+
+      {contextIncidentId && selectedDomain ? (
+        <div className="p6-recovery-context">
+          <div>
+            <strong>Recovery target · {selectedDomain} · incident #{contextIncidentId}</strong>
+            <p>{monitor.data?.activeIncident ? `${monitor.data.activeIncident.severity} risk ${monitor.data.activeIncident.score}/100 · detected by automatic monitoring` : "Opened from incident context; recovery remains approval-gated."}</p>
+          </div>
+          <Link href={`/app/incidents/${contextIncidentId}`}>Inspect deterministic evidence →</Link>
+        </div>
+      ) : null}
+
+      <div className="p6-recovery-steps" aria-label="Recovery progress">
+        {RECOVERY_STEPS.map((step, index) => {
+          const complete = stepIndex > index || (stepIndex === 4 && index === 4);
+          const current = stepIndex === index && !complete;
+          const problem = problemState && index === 3;
+          return (
+            <div className={`p6-recovery-step${complete ? " is-complete" : ""}${current ? " is-current" : ""}${problem ? " is-problem" : ""}`} key={step}>
+              <span>0{index + 1}</span>
+              <strong>{step}</strong>
+            </div>
+          );
+        })}
       </div>
 
       <div className="product-recovery-safety">
@@ -338,7 +398,7 @@ export function RecoveryDashboard() {
           <div className="product-recovery-toolbar">
             <label>
               <span>DOMAIN</span>
-              <select value={selectedDomain} onChange={(event) => { setSelectedDomain(event.target.value); setSelectedPlanId(null); }}>
+              <select value={selectedDomain} onChange={(event) => { setSelectedDomain(event.target.value); setSelectedPlanId(null); setConfirmMutation(false); }}>
                 {names.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
             </label>
@@ -361,11 +421,23 @@ export function RecoveryDashboard() {
               </button>
             ) : null}
             {activePlan?.canApply ? (
-              <button className={verificationOnly ? "button button--primary" : "button button--danger"} disabled={busy === "apply"} onClick={apply} type="button">
+              <button
+                className={verificationOnly ? "button button--primary" : "button button--danger"}
+                disabled={busy === "apply" || (!verificationOnly && !confirmMutation)}
+                onClick={apply}
+                type="button"
+              >
                 {busy === "apply" ? (verificationOnly ? "Verifying current DNS…" : "Applying + verifying…") : verificationOnly ? "Verify current DNS" : "Apply approved recovery"}
               </button>
             ) : null}
           </div>
+
+          {activePlan?.canApply && !verificationOnly ? (
+            <label className="p6-recovery-confirm">
+              <input type="checkbox" checked={confirmMutation} onChange={(event) => setConfirmMutation(event.target.checked)} />
+              <span><strong>Mutation confirmation:</strong> I reviewed the exact operations above and understand that Apply will change live DNS through the approved provider boundary.</span>
+            </label>
+          ) : null}
 
           {detailLoading ? <LoadingState label="Loading full recovery audit…" /> : null}
           {detailError ? <ErrorState message={`Plan summary loaded, but detailed audit could not be read: ${detailError}`} /> : null}
