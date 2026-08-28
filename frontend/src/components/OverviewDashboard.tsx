@@ -16,7 +16,7 @@ import {
 
 type LoadState<T> = { data: T | null; error: string | null; loading: boolean; reload: () => void };
 
-function useEndpoint<T>(path: string | null): LoadState<T> {
+function useEndpoint<T>(path: string | null, refreshMs = 0): LoadState<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(path));
@@ -37,6 +37,12 @@ function useEndpoint<T>(path: string | null): LoadState<T> {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [path, version]);
+
+  useEffect(() => {
+    if (!path || refreshMs <= 0) return;
+    const timer = window.setInterval(() => setVersion((value) => value + 1), refreshMs);
+    return () => window.clearInterval(timer);
+  }, [path, refreshMs]);
 
   return { data, error, loading, reload: () => setVersion((value) => value + 1) };
 }
@@ -70,8 +76,8 @@ export function OverviewDashboard() {
   const provider = useEndpoint<NameComStatus>("namecom/status/");
   const primaryDomain = domains.data?.domains.map(domainNameOf).find(Boolean) ?? null;
   const encoded = primaryDomain ? encodeDomain(primaryDomain) : null;
-  const monitor = useEndpoint<MonitorStatus>(encoded ? `monitor/domains/${encoded}/status/` : null);
-  const incidents = useEndpoint<{ incidents: Incident[]; totalCount: number }>(encoded ? `incidents/domains/${encoded}/` : null);
+  const monitor = useEndpoint<MonitorStatus>(encoded ? `monitor/domains/${encoded}/status/` : null, 15000);
+  const incidents = useEndpoint<{ incidents: Incident[]; totalCount: number }>(encoded ? `incidents/domains/${encoded}/` : null, 15000);
   const plans = useEndpoint<{ plans: RecoveryPlan[]; totalCount: number }>(encoded ? `recovery/domains/${encoded}/plans/` : null);
 
   if (domains.loading) return <><div className="product-page-heading"><div><span className="eyebrow">CONTROL PLANE</span><h1>Domain continuity at a glance</h1><p>Live domain continuity state from the DomainTwin backend.</p></div></div><LoadingState /></>;
@@ -132,7 +138,7 @@ export function OverviewDashboard() {
       <div className="product-grid product-grid--2">
         <article className="product-card">
           <div className="product-card-head"><div><span className="product-card-kicker">LATEST INCIDENT · HISTORICAL</span><h3>{latestIncident ? `Incident #${latestIncident.id}` : "No incident recorded"}</h3></div>{latestIncident ? <StateBadge state={latestIncident.status} /> : null}</div>
-          {latestIncident ? <><div className="product-risk-line"><strong>{latestIncident.score}/100</strong><StateBadge state={latestIncident.severity} /></div><p>{latestIncident.factors?.[0]?.reason ?? "Deterministic evidence is available in the incident workspace."}</p><Link className="product-text-link" href={`/app/incidents/${latestIncident.id}`}>Inspect evidence and AI explanation →</Link></> : <p>Run a monitor evaluation from the domain workspace to establish incident history.</p>}
+          {latestIncident ? <><div className="product-risk-line"><strong>{latestIncident.score}/100</strong><StateBadge state={latestIncident.severity} /></div><p>{latestIncident.factors?.[0]?.reason ?? "Deterministic evidence is available in the incident workspace."}</p><Link className="product-text-link" href={`/app/incidents/${latestIncident.id}`}>Inspect evidence and AI explanation →</Link></> : <p>Automatic monitoring will establish incident history after a known-good baseline exists.</p>}
         </article>
 
         <article className="product-card">
