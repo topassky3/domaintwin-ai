@@ -108,7 +108,7 @@ def evaluate_domain(request, domain_name: str):
     try:
         evaluation = evaluate_domain_state(
             domain_name,
-            client=NameComClient(),
+            client_factory=NameComClient,
             health_checker=check_domain_health,
         )
         baseline = evaluation["baseline"]
