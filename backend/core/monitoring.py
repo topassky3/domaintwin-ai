@@ -26,14 +26,14 @@ ClientFactory = Callable[[], NameComClient]
 def evaluate_domain_state(
     domain_name: str,
     *,
-    client: NameComClient | None = None,
-    health_checker: HealthChecker | None = None,
+    client_factory: ClientFactory = NameComClient,
+    health_checker: HealthChecker = check_domain_health,
 ) -> dict[str, Any]:
     """Evaluate one domain using the same deterministic pipeline as the HTTP API.
 
-    P5 keeps one source of truth for manual and automatic evaluation: known-good DNS
-    evidence, live provider records, external availability, deterministic risk and
-    incident correlation. No scheduler-specific evidence model is introduced.
+    The known-good evidence chain is validated before provider client construction.
+    That ordering preserves the P3-E provider-pre-denial invariant for both manual and
+    automatic P5 monitoring.
     """
 
     marker = (
@@ -45,7 +45,7 @@ def evaluate_domain_state(
         raise Http404("Known-good snapshot not found.")
     baseline = require_snapshot_domain(marker.snapshot, domain_name)
 
-    provider = client or NameComClient()
+    provider = client_factory()
     payload = provider.list_records(domain_name)
     raw_records = payload.get("records") or []
     if not isinstance(raw_records, list):
@@ -59,8 +59,7 @@ def evaluate_domain_state(
         for state in ("ADDED", "REMOVED", "MODIFIED")
     )
 
-    checker = health_checker or check_domain_health
-    health = checker(domain_name)
+    health = health_checker(domain_name)
     observation = record_health_observation(health["domainName"], health)
     unknown_destination = unknown_destination_detected(baseline.records, diff)
     risk = evaluate_risk(
@@ -120,9 +119,9 @@ def run_monitoring_cycle(
 ) -> dict[str, Any]:
     """Run one scheduler-friendly monitoring pass across eligible managed domains.
 
-    Failures are isolated per domain. A missing provider binding or known-good baseline
-    is a deliberate skip and never causes a provider call. This makes a one-shot cycle
-    safe for cron/Task Scheduler while preserving the P3/P4 tenant/provider boundaries.
+    Failures are isolated per domain. Missing provider binding or known-good baseline
+    is a deliberate skip. Exact baseline-chain validation occurs inside the shared
+    evaluator before the provider factory is called.
     """
 
     started_at = timezone.now()
@@ -177,10 +176,10 @@ def run_monitoring_cycle(
         try:
             evaluation = evaluate_domain_state(
                 managed_domain.name,
-                client=client_factory(),
+                client_factory=client_factory,
                 health_checker=health_checker,
             )
-        except Exception as exc:  # isolate one provider/health failure from other tenants/domains
+        except Exception as exc:  # isolate one provider/health/evidence failure from others
             counts["failed"] += 1
             results.append(
                 {
