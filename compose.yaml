@@ -1,0 +1,77 @@
+name: domaintwin
+
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - ${DOMAIN_TWIN_ENV_FILE:-deploy/.env}
+    environment:
+      DJANGO_DB_PATH: /data/db.sqlite3
+    volumes:
+      - domaintwin_data:/data
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+  monitor:
+    build:
+      context: ./backend
+    command: ["monitor"]
+    env_file:
+      - ${DOMAIN_TWIN_ENV_FILE:-deploy/.env}
+    environment:
+      DJANGO_DB_PATH: /data/db.sqlite3
+    volumes:
+      - domaintwin_data:/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      API_BASE_URL: http://backend:8000
+      NEXT_TELEMETRY_DISABLED: "1"
+    expose:
+      - "3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/demo').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      DOMAIN_TWIN_HOST: ${DOMAIN_TWIN_HOST:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  domaintwin_data:
+  caddy_data:
+  caddy_config:
