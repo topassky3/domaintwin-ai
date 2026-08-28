@@ -14,7 +14,8 @@
     "gate11:contract": "node scripts/gate11-contract.mjs",
     "p1:contract": "node scripts/p1-contract.mjs",
     "p2:contract": "node scripts/p2-contract.mjs && node scripts/p2d-contract.mjs && node scripts/p2e-contract.mjs",
-    "p3:contract": "node scripts/p3-contract.mjs && node scripts/p3e-contract.mjs"
+    "p3:contract": "node scripts/p3-contract.mjs && node scripts/p3e-contract.mjs",
+    "p4:contract": "node scripts/p4-contract.mjs"
   },
   "dependencies": {
     "next": "16.3.1",
