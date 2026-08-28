@@ -34,6 +34,7 @@ jobs:
       NAMECOM_ALLOW_PRODUCTION_MUTATIONS: "0"
       NAMECOM_ALLOW_DOMAIN_REGISTRATION: "0"
       DOMAIN_HEALTH_TIMEOUT_SECONDS: "1"
+      DOMAIN_MONITOR_INTERVAL_SECONDS: "60"
       AI_PROVIDER: disabled
       OPENAI_API_KEY: ""
 
@@ -120,6 +121,9 @@ jobs:
 
       - name: P4 provider credentials contract
         run: npm run p4:contract
+
+      - name: P5 monitoring lite contract
+        run: npm run p5:contract
 
       - name: TypeScript
         run: npm run typecheck
