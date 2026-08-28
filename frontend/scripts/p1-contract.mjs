@@ -33,6 +33,10 @@ const setupPythonPin =
   "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97";
 const setupNodePin =
   "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020";
+const checkoutUses = [...workflow.matchAll(/uses:\s+(actions\/checkout@[^\s#]+)/g)]
+  .map((match) => match[1]);
+const allCheckoutUsesPinned = checkoutUses.length > 0
+  && checkoutUses.every((value) => value === checkoutPin);
 
 const checks = [
   [workflow.includes("pull_request:"), "CI runs on pull requests"],
@@ -41,7 +45,7 @@ const checks = [
   [workflow.includes("branches: [main]"), "CI targets main"],
   [workflow.includes('python-version: "3.12"'), "Python 3.12 is explicit"],
   [workflow.includes('node-version: "20"'), "Node.js 20 application runtime is explicit"],
-  [workflow.split(checkoutPin).length - 1 === 2, "checkout is pinned to the verified v7.0.1 commit"],
+  [allCheckoutUsesPinned, "every checkout use is pinned to the verified v7.0.1 commit"],
   [workflow.includes(setupPythonPin), "setup-python is pinned to the verified v7.0.0 commit"],
   [workflow.includes(setupNodePin), "setup-node is pinned to the verified v7.0.0 commit"],
   [!workflow.includes("actions/checkout@v4"), "deprecated checkout v4 action is absent"],
