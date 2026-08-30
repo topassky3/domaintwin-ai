@@ -49,5 +49,14 @@ async function requireWorkspaceSession(): Promise<AuthUser> {
 
 export default async function AppLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const user = await requireWorkspaceSession();
-  return <ProductShell user={user}>{children}</ProductShell>;
+  const viewerMode = user.role === "VIEWER";
+
+  return (
+    <div className={viewerMode ? "viewer-workspace" : undefined}>
+      {viewerMode ? (
+        <style>{`.viewer-workspace .product-content button { display: none !important; }`}</style>
+      ) : null}
+      <ProductShell user={user}>{children}</ProductShell>
+    </div>
+  );
 }
