@@ -1,0 +1,11 @@
+{$DOMAIN_TWIN_HOST:localhost} {
+    encode zstd gzip
+
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        X-Frame-Options DENY
+    }
+
+    reverse_proxy frontend:3000
+}

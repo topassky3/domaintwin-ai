@@ -8,9 +8,7 @@ export function ApiStatus() {
   const [state, setState] = useState<HealthState>("checking");
 
   useEffect(() => {
-    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
-
-    fetch(`${baseUrl}/api/health/`, { signal: AbortSignal.timeout(2500) })
+    fetch("/api/domaintwin/health", { signal: AbortSignal.timeout(2500) })
       .then((response) => {
         if (!response.ok) throw new Error("API unavailable");
         return response.json();

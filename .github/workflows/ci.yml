@@ -59,7 +59,7 @@ jobs:
 
       - name: Verify pinned backend versions
         run: |
-          python -c "import importlib.metadata as m; assert m.version('Django') == '5.2.17'; assert m.version('python-dotenv') == '1.2.3'; print('Backend dependency pins verified')"
+          python -c "import importlib.metadata as m; assert m.version('Django') == '5.2.17'; assert m.version('python-dotenv') == '1.2.3'; assert m.version('gunicorn') == '23.0.0'; print('Backend dependency pins verified')"
 
       - name: Migration drift check
         run: python manage.py makemigrations --check --dry-run
@@ -131,8 +131,28 @@ jobs:
       - name: P7 demo hardening contract
         run: npm run p7:contract
 
+      - name: P8 deploy contract
+        run: npm run p8:contract
+
       - name: TypeScript
         run: npm run typecheck
 
       - name: Production build
         run: npm run build
+
+  deploy:
+    name: Deployment compose + images
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DOMAIN_TWIN_ENV_FILE: deploy/.env.example
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate Compose deployment
+        run: docker compose --env-file deploy/.env.example config --quiet
+
+      - name: Build deployment images
+        run: docker compose --env-file deploy/.env.example build backend frontend
